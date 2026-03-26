@@ -1,9 +1,10 @@
 import axios from 'axios'
 import type { Category, CategoryCreate, PlaidMapping, SyncResult, Transaction, User, WaitlistEntry } from '@/types'
 
-const baseURL = import.meta.env.VITE_API_URL
-  ? `${import.meta.env.VITE_API_URL}/api/v1`
-  : '/api/v1'
+// window.__env is injected at container start (scripts/generate-env.js) for Railway.
+// import.meta.env.VITE_API_URL is the fallback for local dev (Vite proxy handles /api).
+const apiUrl = window.__env?.VITE_API_URL || import.meta.env.VITE_API_URL || ''
+const baseURL = apiUrl ? `${apiUrl}/api/v1` : '/api/v1'
 
 const api = axios.create({ baseURL })
 
