@@ -1,0 +1,7 @@
+[start]
+cmd = "npm start"
+
+[deploy]
+healthcheckPath = "/"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3

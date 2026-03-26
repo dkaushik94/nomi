@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,6 +12,14 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "sqlite+aiosqlite:///./dobby.db"
     database_url_prod: str = ""
+
+    @field_validator("database_url_prod")
+    @classmethod
+    def fix_asyncpg_driver(cls, v: str) -> str:
+        """Supabase connection strings use postgresql://, asyncpg requires postgresql+asyncpg://."""
+        if v.startswith("postgresql://"):
+            return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return v
 
     # Supabase
     supabase_url: str = ""
@@ -31,6 +40,9 @@ class Settings(BaseSettings):
     max_users: int = 15
     admin_emails: str = ""
 
+    # CORS — comma-separated list of allowed origins
+    allowed_origins: str = "http://localhost:5173,http://localhost:3000"
+
     @property
     def is_local(self) -> bool:
         return self.environment == "local"
@@ -42,6 +54,10 @@ class Settings(BaseSettings):
     @property
     def admin_email_list(self) -> list[str]:
         return [e.strip() for e in self.admin_emails.split(",") if e.strip()]
+
+    @property
+    def allowed_origins_list(self) -> list[str]:
+        return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
 
 
 @lru_cache

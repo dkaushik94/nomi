@@ -66,3 +66,4 @@ jobs:
         env:
           VITE_SUPABASE_URL: https://placeholder.supabase.co
           VITE_SUPABASE_PUBLISHABLE_KEY: placeholder-key
+          VITE_API_URL: https://placeholder.railway.app

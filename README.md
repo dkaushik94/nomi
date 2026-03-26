@@ -9,7 +9,7 @@ A personal expense tracking web app that connects to your bank accounts via Plai
 | Frontend | React 18, TypeScript, Vite, Material UI |
 | Backend | FastAPI, Python 3.12, SQLAlchemy 2.0 |
 | Database (local) | SQLite |
-| Database (prod) | PostgreSQL via Supabase |
+| Database (development/production) | PostgreSQL via Supabase |
 | Auth | Google OAuth via Supabase + JWT |
 | Bank data | Plaid API |
 
@@ -28,22 +28,30 @@ cd backend
 cp .env.example .env
 ```
 
+The app has two environments controlled by `ENVIRONMENT`:
+
+| `ENVIRONMENT` value | Database | Where it runs |
+|---|---|---|
+| `local` | SQLite (no setup needed) | Your machine |
+| `development` | Supabase PostgreSQL | Railway |
+
 Fill in `backend/.env`:
 
 | Variable | Description |
 |---|---|
-| `ENVIRONMENT` | `local` (SQLite) or `production` (PostgreSQL) |
-| `DATABASE_URL` | SQLite path — default works for local dev |
+| `ENVIRONMENT` | `local` for local dev, `development` for Railway |
+| `DATABASE_URL` | SQLite path — default works as-is for local |
 | `SUPABASE_URL` | Your Supabase project URL |
-| `SUPABASE_PUBLISHABLE_KEY` | Supabase publishable (anon) key |
+| `SUPABASE_PUBLISHABLE_KEY` | Supabase anon/publishable key |
 | `SUPABASE_SECRET_KEY` | Supabase service role key |
-| `DATABASE_URL_PROD` | PostgreSQL URL from Supabase (production only) |
+| `DATABASE_URL_PROD` | Supabase PostgreSQL connection string — required when `ENVIRONMENT=development` |
 | `JWT_SECRET` | Long random string — used to sign tokens |
 | `PLAID_CLIENT_ID` | From Plaid dashboard |
-| `PLAID_SECRET` | From Plaid dashboard (use sandbox secret for dev) |
-| `PLAID_ENV` | `sandbox`, `development`, or `production` |
+| `PLAID_SECRET` | From Plaid dashboard (sandbox secret for now) |
+| `PLAID_ENV` | `sandbox` |
 | `MAX_USERS` | Max active users allowed (default: 15) |
 | `ADMIN_EMAILS` | Comma-separated list of admin email addresses |
+| `ALLOWED_ORIGINS` | Comma-separated allowed CORS origins — add your Railway frontend URL when deploying |
 
 Install dependencies and run:
 
@@ -67,6 +75,7 @@ Fill in `frontend/.env`:
 |---|---|
 | `VITE_SUPABASE_URL` | Your Supabase project URL |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | Supabase publishable (anon) key |
+| `VITE_API_URL` | Leave unset locally (Vite proxies `/api` to `localhost:8000`). Set to your Railway backend URL when deploying. |
 
 Install dependencies and run:
 
