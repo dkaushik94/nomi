@@ -10,7 +10,9 @@ class Category(Base):
     __tablename__ = "categories"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
     label: Mapped[str] = mapped_column(String(100))
     value: Mapped[str] = mapped_column(String(100))
     color: Mapped[str] = mapped_column(String(20), default="#6366f1")

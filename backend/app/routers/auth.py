@@ -42,7 +42,9 @@ async def google_callback(
     user = result.scalar_one_or_none()
 
     if user and user.is_deleted:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is pending deletion")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Account is pending deletion"
+        )
 
     if not user:
         # Enforce user cap

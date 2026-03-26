@@ -53,7 +53,9 @@ async def active_user(db: AsyncSession) -> User:
 
 @pytest.fixture
 async def admin_user(db: AsyncSession) -> User:
-    user = User(supabase_uid="admin-uid-1", email="admin@example.com", is_active=True, is_admin=True)
+    user = User(
+        supabase_uid="admin-uid-1", email="admin@example.com", is_active=True, is_admin=True
+    )
     db.add(user)
     await db.commit()
     await db.refresh(user)

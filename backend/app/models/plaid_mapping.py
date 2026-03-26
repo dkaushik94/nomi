@@ -19,9 +19,7 @@ class CategoryPlaidMapping(Base):
         Integer, ForeignKey("categories.id", ondelete="CASCADE"), index=True
     )
     plaid_category: Mapped[str] = mapped_column(String(100))
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
         # Each Plaid category can only map to one custom category per user

@@ -135,7 +135,7 @@ export default function Dashboard() {
     let active = true
     getLinkToken().then((t) => { if (active) setLinkToken(t) }).catch(() => null)
     return () => { active = false }
-  }, [user?.plaid_item_id])
+  }, [user])
 
   const thisMonthTransactions = useMemo(() => {
     const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10)

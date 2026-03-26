@@ -2,11 +2,11 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.middleware.rate_limit import LIMITS, user_limiter as limiter
+from app.middleware.rate_limit import LIMITS
+from app.middleware.rate_limit import user_limiter as limiter
 from app.models.category import Category
 from app.models.plaid_mapping import CategoryPlaidMapping
 from app.models.user import User

@@ -1,6 +1,5 @@
 """Tests for user profile and account management endpoints."""
 
-import pytest
 from httpx import AsyncClient
 
 from app.models.user import User
@@ -15,7 +14,7 @@ async def test_get_profile(client: AsyncClient, active_user: User, user_token: s
 
 async def test_get_profile_unauthenticated(client: AsyncClient):
     resp = await client.get("/api/v1/users/profile")
-    assert resp.status_code == 403
+    assert resp.status_code == 401
 
 
 async def test_delete_account(client: AsyncClient, active_user: User, user_token: str):

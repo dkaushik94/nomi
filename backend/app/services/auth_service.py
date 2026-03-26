@@ -34,7 +34,9 @@ async def get_current_user(
     payload = decode_token(credentials.credentials)
     supabase_uid: str | None = payload.get("sub")
     if not supabase_uid:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload"
+        )
 
     result = await db.execute(
         select(User).where(User.supabase_uid == supabase_uid, User.is_deleted.is_(False))

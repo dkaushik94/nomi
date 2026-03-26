@@ -5,7 +5,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.middleware.rate_limit import LIMITS, user_limiter as limiter
+from app.middleware.rate_limit import LIMITS
+from app.middleware.rate_limit import user_limiter as limiter
 from app.models.category import Category
 from app.models.transaction import Transaction
 from app.models.user import User

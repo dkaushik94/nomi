@@ -12,7 +12,9 @@ class Transaction(Base):
     __tablename__ = "transactions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
     custom_category_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("categories.id", ondelete="SET NULL"), nullable=True, index=True
     )

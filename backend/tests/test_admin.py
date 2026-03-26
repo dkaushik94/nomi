@@ -58,9 +58,7 @@ async def test_purge_user(
     assert resp.status_code == 204
 
 
-async def test_purge_own_account_blocked(
-    client: AsyncClient, admin_user: User, admin_token: str
-):
+async def test_purge_own_account_blocked(client: AsyncClient, admin_user: User, admin_token: str):
     resp = await client.delete(
         f"/api/v1/admin/purge/{admin_user.id}", headers=auth_headers(admin_token)
     )

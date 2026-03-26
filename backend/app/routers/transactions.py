@@ -1,13 +1,14 @@
 """Transactions router."""
 
-from datetime import date, datetime, UTC
+from datetime import UTC, date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.middleware.rate_limit import LIMITS, user_limiter as limiter
+from app.middleware.rate_limit import LIMITS
+from app.middleware.rate_limit import user_limiter as limiter
 from app.models.category import Category
 from app.models.transaction import Transaction
 from app.models.user import User
@@ -34,9 +35,13 @@ async def list_transactions(
     effective_end = end_date or today
 
     if effective_end < effective_start:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="end_date must be >= start_date")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="end_date must be >= start_date"
+        )
     if (effective_end - effective_start).days > 366:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Date range cannot exceed 366 days")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Date range cannot exceed 366 days"
+        )
 
     q = (
         select(Transaction)

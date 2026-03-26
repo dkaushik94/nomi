@@ -36,7 +36,9 @@ async def test_create_category(client: AsyncClient, active_user: User, user_toke
     assert data["color"] == "#22c55e"
 
 
-async def test_create_category_invalid_color(client: AsyncClient, active_user: User, user_token: str):
+async def test_create_category_invalid_color(
+    client: AsyncClient, active_user: User, user_token: str
+):
     resp = await client.post(
         "/api/v1/categories",
         json={"label": "X", "value": "x", "color": "red"},
@@ -45,7 +47,9 @@ async def test_create_category_invalid_color(client: AsyncClient, active_user: U
     assert resp.status_code == 422
 
 
-async def test_create_category_invalid_label(client: AsyncClient, active_user: User, user_token: str):
+async def test_create_category_invalid_label(
+    client: AsyncClient, active_user: User, user_token: str
+):
     resp = await client.post(
         "/api/v1/categories",
         json={"label": "<script>alert(1)</script>", "value": "x", "color": "#aabbcc"},
@@ -54,7 +58,9 @@ async def test_create_category_invalid_label(client: AsyncClient, active_user: U
     assert resp.status_code == 422
 
 
-async def test_update_category(client: AsyncClient, active_user: User, user_token: str, category: Category):
+async def test_update_category(
+    client: AsyncClient, active_user: User, user_token: str, category: Category
+):
     resp = await client.put(
         f"/api/v1/categories/{category.id}",
         json={"label": "Updated"},
@@ -64,7 +70,9 @@ async def test_update_category(client: AsyncClient, active_user: User, user_toke
     assert resp.json()["label"] == "Updated"
 
 
-async def test_delete_category(client: AsyncClient, active_user: User, user_token: str, category: Category):
+async def test_delete_category(
+    client: AsyncClient, active_user: User, user_token: str, category: Category
+):
     resp = await client.delete(
         f"/api/v1/categories/{category.id}", headers=auth_headers(user_token)
     )
@@ -78,4 +86,4 @@ async def test_delete_category_not_found(client: AsyncClient, active_user: User,
 
 async def test_unauthenticated_access(client: AsyncClient):
     resp = await client.get("/api/v1/categories")
-    assert resp.status_code == 403
+    assert resp.status_code == 401

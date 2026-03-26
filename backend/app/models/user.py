@@ -16,9 +16,13 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     # Soft delete
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
-    delete_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    delete_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # Plaid integration
-    plaid_access_token: Mapped[str | None] = mapped_column(Text, nullable=True)  # encrypted at app level
+    plaid_access_token: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )  # encrypted at app level
     plaid_item_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     plaid_cursor: Mapped[str | None] = mapped_column(Text, nullable=True)
 

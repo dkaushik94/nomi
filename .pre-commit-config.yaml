@@ -1,0 +1,31 @@
+repos:
+  # Backend — ruff lint (with autofix) + format
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.2
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^backend/
+      - id: ruff-format
+        files: ^backend/
+
+  # Frontend — ESLint
+  - repo: local
+    hooks:
+      - id: eslint
+        name: ESLint (frontend)
+        language: system
+        entry: bash -c 'cd frontend && npm run lint'
+        files: ^frontend/src/.*\.(ts|tsx)$
+        pass_filenames: false
+
+  # Backend — pytest (pre-push only)
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest (backend)
+        language: system
+        entry: bash -c 'cd backend && pytest --tb=short -q'
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

@@ -2,13 +2,15 @@
 
 from datetime import UTC, datetime
 
+import plaid
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.database import get_db
-from app.middleware.rate_limit import LIMITS, user_limiter as limiter
+from app.middleware.rate_limit import LIMITS
+from app.middleware.rate_limit import user_limiter as limiter
 from app.models.transaction import Transaction
 from app.models.user import User
 from app.schemas.user import LinkAccountRequest, SyncTransactionsResponse, UserProfile
@@ -41,7 +43,12 @@ async def link_account(
     current_user: User = Depends(get_current_user),
 ) -> UserProfile:
     """Exchange Plaid public token and store access token."""
-    access_token, item_id = exchange_public_token(body.public_token)
+    try:
+        access_token, item_id = exchange_public_token(body.public_token)
+    except plaid.ApiException as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Plaid token"
+        ) from e
     current_user.plaid_access_token = access_token
     current_user.plaid_item_id = item_id
     current_user.plaid_cursor = None  # Reset cursor on new link
@@ -75,32 +82,36 @@ async def trigger_sync(
             continue
 
         pfc = tx.get("personal_finance_category") or {}
-        db.add(Transaction(
-            user_id=current_user.id,
-            plaid_transaction_id=tx["transaction_id"],
-            plaid_account_id=tx["account_id"],
-            name=tx.get("name") or "",
-            merchant_name=tx.get("merchant_name"),
-            amount=tx["amount"],
-            currency_code=tx.get("iso_currency_code") or "USD",
-            transaction_date=tx["date"],
-            authorized_date=tx.get("authorized_date"),
-            plaid_category=pfc.get("primary"),
-            plaid_category_detailed=pfc.get("detailed"),
-            pending=tx.get("pending", False),
-            payment_channel=tx.get("payment_channel"),
-            logo_url=tx.get("logo_url"),
-        ))
+        db.add(
+            Transaction(
+                user_id=current_user.id,
+                plaid_transaction_id=tx["transaction_id"],
+                plaid_account_id=tx["account_id"],
+                name=tx.get("name") or "",
+                merchant_name=tx.get("merchant_name"),
+                amount=tx["amount"],
+                currency_code=tx.get("iso_currency_code") or "USD",
+                transaction_date=tx["date"],
+                authorized_date=tx.get("authorized_date"),
+                plaid_category=pfc.get("primary"),
+                plaid_category_detailed=pfc.get("detailed"),
+                pending=tx.get("pending", False),
+                payment_channel=tx.get("payment_channel"),
+                logo_url=tx.get("logo_url"),
+            )
+        )
         added_count += 1
 
     modified_count = 0
     for tx in result["modified"]:
-        row = (await db.execute(
-            select(Transaction).where(
-                Transaction.plaid_transaction_id == tx["transaction_id"],
-                Transaction.user_id == current_user.id,
+        row = (
+            await db.execute(
+                select(Transaction).where(
+                    Transaction.plaid_transaction_id == tx["transaction_id"],
+                    Transaction.user_id == current_user.id,
+                )
             )
-        )).scalar_one_or_none()
+        ).scalar_one_or_none()
         if row:
             row.name = tx.get("name") or row.name
             row.amount = tx["amount"]
@@ -109,12 +120,14 @@ async def trigger_sync(
 
     removed_count = 0
     for tx in result["removed"]:
-        row = (await db.execute(
-            select(Transaction).where(
-                Transaction.plaid_transaction_id == tx["transaction_id"],
-                Transaction.user_id == current_user.id,
+        row = (
+            await db.execute(
+                select(Transaction).where(
+                    Transaction.plaid_transaction_id == tx["transaction_id"],
+                    Transaction.user_id == current_user.id,
+                )
             )
-        )).scalar_one_or_none()
+        ).scalar_one_or_none()
         if row:
             row.is_deleted = True
             row.delete_requested_at = datetime.now(UTC)
@@ -123,7 +136,9 @@ async def trigger_sync(
     current_user.plaid_cursor = result["next_cursor"]
     await db.commit()
 
-    return SyncTransactionsResponse(added=added_count, modified=modified_count, removed=removed_count)
+    return SyncTransactionsResponse(
+        added=added_count, modified=modified_count, removed=removed_count
+    )
 
 
 @router.delete("/account", status_code=status.HTTP_204_NO_CONTENT)
@@ -136,12 +151,18 @@ async def delete_account(
     current_user.is_deleted = True
     current_user.delete_requested_at = now
 
-    rows = (await db.execute(
-        select(Transaction).where(
-            Transaction.user_id == current_user.id,
-            Transaction.is_deleted.is_(False),
+    rows = (
+        (
+            await db.execute(
+                select(Transaction).where(
+                    Transaction.user_id == current_user.id,
+                    Transaction.is_deleted.is_(False),
+                )
+            )
         )
-    )).scalars().all()
+        .scalars()
+        .all()
+    )
     for row in rows:
         row.is_deleted = True
         row.delete_requested_at = now
