@@ -25,7 +25,7 @@ repos:
       - id: pytest
         name: pytest (backend)
         language: system
-        entry: bash -c 'cd backend && pytest --tb=short -q'
+        entry: bash -c 'cd backend && uv run pytest --tb=short -q'
         pass_filenames: false
         always_run: true
         stages: [pre-push]

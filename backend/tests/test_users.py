@@ -1,5 +1,8 @@
 """Tests for user profile and account management endpoints."""
 
+from unittest.mock import patch
+
+import plaid
 from httpx import AsyncClient
 
 from app.models.user import User
@@ -29,14 +32,17 @@ async def test_delete_account(client: AsyncClient, active_user: User, user_token
 async def test_link_account_without_plaid_credentials(
     client: AsyncClient, active_user: User, user_token: str
 ):
-    """Linking account calls Plaid — stub verifies error handling without real credentials."""
-    resp = await client.post(
-        "/api/v1/users/link-account",
-        json={"public_token": "public-sandbox-abc-123"},
-        headers=auth_headers(user_token),
-    )
-    # Plaid will fail in test environment — we just verify the endpoint exists and validates input
-    assert resp.status_code in (200, 400, 500)
+    """Route returns 400 when Plaid rejects the public token."""
+    with patch(
+        "app.routers.users.exchange_public_token",
+        side_effect=plaid.ApiException(status=400, reason="INVALID_PUBLIC_TOKEN"),
+    ):
+        resp = await client.post(
+            "/api/v1/users/link-account",
+            json={"public_token": "public-sandbox-abc-123"},
+            headers=auth_headers(user_token),
+        )
+    assert resp.status_code == 400
 
 
 async def test_link_account_invalid_token(client: AsyncClient, active_user: User, user_token: str):

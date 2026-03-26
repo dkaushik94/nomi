@@ -32,7 +32,7 @@ jobs:
         run: ruff check .
 
       - name: Run tests
-        run: pytest --tb=short
+        run: uv run pytest --tb=short
         env:
           ENVIRONMENT: local
           DATABASE_URL: sqlite+aiosqlite:///./test.db
