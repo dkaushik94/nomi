@@ -19,12 +19,19 @@ class User(Base):
     delete_requested_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    # Plaid integration
+    # Plaid integration — mirrors the active BankLink for fast access.
+    # Deprecated: these will be removed once multi-account support is fully rolled out.
+    # Source of truth is the bank_links table (BankLink.is_active == True).
     plaid_access_token: Mapped[str | None] = mapped_column(
         Text, nullable=True
     )  # encrypted at app level
     plaid_item_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     plaid_cursor: Mapped[str | None] = mapped_column(Text, nullable=True)
+    institution_name: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+        comment="Denormalised from the active BankLink for quick profile display.",
+    )
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -33,3 +40,4 @@ class User(Base):
 
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="user", lazy="select")
     categories: Mapped[list["Category"]] = relationship(back_populates="user", lazy="select")
+    bank_links: Mapped[list["BankLink"]] = relationship(back_populates="user", lazy="select")  # type: ignore[name-defined]

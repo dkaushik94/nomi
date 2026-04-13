@@ -7,6 +7,8 @@ import {
   Typography,
 } from '@mui/material'
 import type { Category, PlaidMapping, Transaction } from '@/types'
+import type { CategoryFormData } from '@/components/categories/CategoryFormModal'
+import CategoryDropdown from './CategoryDropdown'
 
 const PLAID_PALETTE = [
   '#0fc4b5', '#c9a227', '#6366f1', '#ec4899', '#f97316',
@@ -23,46 +25,94 @@ interface Props {
   transaction: Transaction
   categories: Category[]
   mappings: PlaidMapping[]
+  isNew: boolean
   onClick: () => void
+  onTag: (catId: number) => Promise<void>
+  onClear: () => Promise<void>
+  onDismiss: () => void
+  onCreate: (data: CategoryFormData) => Promise<Category>
 }
 
-export default function TransactionRow({ transaction, categories, mappings, onClick }: Props) {
+// Keyframe for the "new" pulsing indicator dot
+const pulseKeyframes = {
+  '@keyframes newPulse': {
+    '0%, 100%': { opacity: 1, transform: 'scale(1)' },
+    '50%': { opacity: 0.4, transform: 'scale(0.85)' },
+  },
+}
+
+export default function TransactionRow({
+  transaction,
+  categories,
+  mappings,
+  isNew,
+  onClick,
+  onTag,
+  onClear,
+  onDismiss,
+  onCreate,
+}: Props) {
   const plaidColor = transaction.plaid_category ? hashColor(transaction.plaid_category) : null
 
-  // Resolve custom category: direct tag first, then plaid mapping fallback
-  const customCat = transaction.custom_category_id
-    ? categories.find((c) => c.id === transaction.custom_category_id)
-    : (() => {
-        if (!transaction.plaid_category) return undefined
+  // Auto-mapped category (for display only — the dropdown manages direct tags)
+  const autoMappedCat = !transaction.custom_category_id && transaction.plaid_category
+    ? (() => {
         const mapping = mappings.find((m) => m.plaid_category === transaction.plaid_category)
         return mapping ? categories.find((c) => c.id === mapping.custom_category_id) : undefined
       })()
-  const isAutoMapped = !transaction.custom_category_id && !!customCat
+    : undefined
 
   return (
     <TableRow
       hover
       onClick={onClick}
-      sx={{ cursor: 'pointer', '&:hover td': { bgcolor: 'rgba(255,255,255,0.015)' } }}
+      sx={{
+        cursor: 'pointer',
+        ...pulseKeyframes,
+        // "New" row highlight: left border + subtle tint
+        ...(isNew && {
+          bgcolor: 'rgba(15,196,181,0.025)',
+          '& > td:first-of-type': {
+            borderLeft: '3px solid',
+            borderLeftColor: 'primary.main',
+          },
+        }),
+        '&:hover td': { bgcolor: 'rgba(255,255,255,0.015)' },
+      }}
     >
+      {/* ── Merchant ──────────────────────────────────────────────────────── */}
       <TableCell sx={{ pl: 2.5 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
           {transaction.logo_url ? (
-            <Avatar src={transaction.logo_url} sx={{ width: 30, height: 30 }} />
+            <Avatar src={transaction.logo_url} sx={{ width: 30, height: 30, flexShrink: 0 }} />
           ) : (
-            <Avatar sx={{ width: 30, height: 30, bgcolor: 'rgba(255,255,255,0.06)', fontSize: 12, color: 'text.secondary', fontWeight: 700 }}>
+            <Avatar sx={{ width: 30, height: 30, bgcolor: 'rgba(255,255,255,0.06)', fontSize: 12, color: 'text.secondary', fontWeight: 700, flexShrink: 0 }}>
               {(transaction.merchant_name ?? transaction.name)[0]?.toUpperCase()}
             </Avatar>
           )}
           <Box>
-            <Typography variant="body2" fontWeight={500} noWrap sx={{ maxWidth: 220 }}>
-              {transaction.merchant_name ?? transaction.name}
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+              <Typography variant="body2" fontWeight={500} noWrap sx={{ maxWidth: 200 }}>
+                {transaction.merchant_name ?? transaction.name}
+              </Typography>
+              {isNew && (
+                <Tooltip title="Newly synced — add a category or mark as reviewed">
+                  <Box
+                    sx={{
+                      width: 7, height: 7, borderRadius: '50%',
+                      bgcolor: 'primary.main', flexShrink: 0,
+                      animation: 'newPulse 2s ease-in-out infinite',
+                    }}
+                  />
+                </Tooltip>
+              )}
+            </Box>
             <Typography variant="caption" color="text.secondary">{transaction.transaction_date}</Typography>
           </Box>
         </Box>
       </TableCell>
 
+      {/* ── Plaid category ────────────────────────────────────────────────── */}
       <TableCell>
         {transaction.plaid_category && plaidColor && (
           <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.6, px: 1, py: 0.3, borderRadius: 1.5, bgcolor: `${plaidColor}18`, border: `1px solid ${plaidColor}44`, maxWidth: 200 }}>
@@ -74,24 +124,34 @@ export default function TransactionRow({ transaction, categories, mappings, onCl
         )}
       </TableCell>
 
-      <TableCell>
-        {customCat ? (
-          <Tooltip title={isAutoMapped ? 'Auto-mapped from Plaid category' : ''}>
-            <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.6, px: 1, py: 0.3, borderRadius: 1.5, bgcolor: `${customCat.color}18`, border: `1px solid ${customCat.color}44` }}>
-              <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: customCat.color, flexShrink: 0 }} />
-              <Typography variant="caption" noWrap sx={{ fontSize: 11, fontWeight: 600, color: customCat.color, lineHeight: 1.2 }}>
-                {customCat.label}
-              </Typography>
-              {isAutoMapped && (
-                <Typography variant="caption" sx={{ fontSize: 9, color: customCat.color, opacity: 0.7, ml: 0.25 }}>auto</Typography>
-              )}
-            </Box>
-          </Tooltip>
-        ) : (
-          <Typography variant="caption" color="text.disabled" sx={{ fontSize: 11 }}>—</Typography>
-        )}
+      {/* ── Custom category dropdown ──────────────────────────────────────── */}
+      <TableCell onClick={(e) => e.stopPropagation()}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <CategoryDropdown
+            transaction={transaction}
+            categories={categories}
+            isNew={isNew}
+            onTag={onTag}
+            onClear={onClear}
+            onDismiss={onDismiss}
+            onCreate={onCreate}
+          />
+          {/* Auto-mapped indicator (read-only, shown alongside the dropdown) */}
+          {autoMappedCat && (
+            <Tooltip title="Auto-mapped from Plaid category">
+              <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, px: 1, py: 0.3, borderRadius: 1.5, bgcolor: `${autoMappedCat.color}12`, border: `1px solid ${autoMappedCat.color}30` }}>
+                <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: autoMappedCat.color, flexShrink: 0 }} />
+                <Typography variant="caption" noWrap sx={{ fontSize: 11, fontWeight: 600, color: autoMappedCat.color, lineHeight: 1.2, opacity: 0.85 }}>
+                  {autoMappedCat.label}
+                </Typography>
+                <Typography variant="caption" sx={{ fontSize: 9, color: autoMappedCat.color, opacity: 0.6 }}>auto</Typography>
+              </Box>
+            </Tooltip>
+          )}
+        </Box>
       </TableCell>
 
+      {/* ── Amount ───────────────────────────────────────────────────────── */}
       <TableCell align="right" sx={{ pr: 2.5 }}>
         <Tooltip title={transaction.pending ? 'Pending' : ''}>
           <Typography

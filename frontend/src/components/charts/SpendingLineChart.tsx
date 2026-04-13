@@ -14,6 +14,8 @@ import { useMemo } from 'react'
 
 interface Props {
   transactions: Transaction[]
+  startDate?: string
+  endDate?: string
 }
 
 function CustomTooltip({ active, payload, label }: TooltipProps<number, string>) {
@@ -28,25 +30,37 @@ function CustomTooltip({ active, payload, label }: TooltipProps<number, string>)
   )
 }
 
-export default function SpendingLineChart({ transactions }: Props) {
+export default function SpendingLineChart({ transactions, startDate, endDate }: Props) {
   const data = useMemo(() => {
     const byDay = new Map<string, number>()
+
+    // Seed all days in the range with $0 so the x-axis covers the full selected period
+    if (startDate && endDate) {
+      const cursor = new Date(startDate + 'T00:00:00')
+      const last = new Date(endDate + 'T00:00:00')
+      while (cursor <= last) {
+        byDay.set(cursor.toISOString().slice(0, 10), 0)
+        cursor.setDate(cursor.getDate() + 1)
+      }
+    }
+
     for (const tx of transactions) {
-      if (tx.pending) continue
+      if (tx.pending || tx.amount <= 0) continue
       byDay.set(tx.transaction_date, (byDay.get(tx.transaction_date) ?? 0) + tx.amount)
     }
+
     return Array.from(byDay.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, total]) => ({
         date: new Date(date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
         total: parseFloat(total.toFixed(2)),
       }))
-  }, [transactions])
+  }, [transactions, startDate, endDate])
 
   if (!data.length) {
     return (
       <Box sx={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Typography color="text.secondary" variant="body2">No spending data this month</Typography>
+        <Typography color="text.secondary" variant="body2">No spending data for this period</Typography>
       </Box>
     )
   }

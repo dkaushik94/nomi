@@ -13,7 +13,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from app.config import get_settings
 from app.database import create_tables
 from app.middleware.rate_limit import limiter
-from app.models import plaid_mapping  # noqa: F401 — imported for table creation
+from app.models import bank_link, plaid_mapping  # noqa: F401 — imported for table creation
 from app.routers import admin, auth, categories, plaid_mappings, transactions, users
 
 

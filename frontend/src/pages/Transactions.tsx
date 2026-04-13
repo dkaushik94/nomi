@@ -1,9 +1,10 @@
 import { Alert, Box, CircularProgress, Typography } from '@mui/material'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import dayjs from 'dayjs'
 import { useTransactions } from '@/hooks/useTransactions'
 import { useCategories } from '@/hooks/useCategories'
 import { usePlaidMappings } from '@/hooks/usePlaidMappings'
+import { useNewTransactions } from '@/hooks/useNewTransactions'
 import TransactionList from '@/components/transactions/TransactionList'
 import DateRangeSelector from '@/components/common/DateRangeSelector'
 
@@ -20,13 +21,25 @@ export default function Transactions() {
   const [startDate, setStartDate] = useState(defaults.start)
   const [endDate, setEndDate] = useState(defaults.end)
 
-  const { transactions, loading, loadingMore, hasMore, error, loadMore } = useTransactions({
+  const { transactions, loading, loadingMore, hasMore, error, loadMore, tagCategory, clearCategory } = useTransactions({
     startDate,
     endDate,
     paginated: true,
   })
-  const { categories } = useCategories()
+  const { categories, create: createCategory } = useCategories()
   const { mappings } = usePlaidMappings()
+  const { isNew, dismiss } = useNewTransactions()
+
+  // Tag a transaction and mark it as reviewed (dismisses the "new" highlight)
+  const handleTag = useCallback(async (txId: number, catId: number) => {
+    await tagCategory(txId, catId)
+    dismiss(txId)
+  }, [tagCategory, dismiss])
+
+  // Clear a transaction's category (doesn't dismiss the new highlight)
+  const handleClear = useCallback(async (txId: number) => {
+    await clearCategory(txId)
+  }, [clearCategory])
 
   return (
     <Box>
@@ -57,6 +70,11 @@ export default function Transactions() {
           hasMore={hasMore}
           loadingMore={loadingMore}
           onLoadMore={loadMore}
+          isNew={isNew}
+          onTag={handleTag}
+          onClear={handleClear}
+          onDismiss={dismiss}
+          onCreate={createCategory}
         />
       )}
     </Box>

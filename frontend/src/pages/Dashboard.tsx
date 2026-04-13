@@ -15,6 +15,7 @@ import {
   Typography,
 } from '@mui/material'
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance'
+import LinkOffIcon from '@mui/icons-material/LinkOff'
 import SyncIcon from '@mui/icons-material/Sync'
 import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 import TrendingDownIcon from '@mui/icons-material/TrendingDown'
@@ -29,19 +30,26 @@ import { useTransactions } from '@/hooks/useTransactions'
 import { useCategories } from '@/hooks/useCategories'
 import { usePlaidMappings } from '@/hooks/usePlaidMappings'
 import { useAuth } from '@/context/AuthContext'
-import { getLinkToken, linkAccount, syncTransactions } from '@/services/api'
+import { getLinkToken, linkAccount, syncTransactions, unlinkAccount } from '@/services/api'
 import SpendingLineChart from '@/components/charts/SpendingLineChart'
 import CategoryPieChart from '@/components/charts/CategoryPieChart'
 import CustomCategoryPieChart from '@/components/charts/CustomCategoryPieChart'
 import HistoricalBarChart from '@/components/charts/HistoricalBarChart'
 import DateRangeSelector from '@/components/common/DateRangeSelector'
 
-function getThreeMonthRange() {
-  const now = new Date()
-  const start = new Date(now.getFullYear(), now.getMonth() - 2, 1)
+function getDefaultRange() {
+  const today = dayjs()
   return {
-    startDate: start.toISOString().slice(0, 10),
-    endDate: now.toISOString().slice(0, 10),
+    start: today.startOf('month').format('YYYY-MM-DD'),
+    end: today.format('YYYY-MM-DD'),
+  }
+}
+
+function getThreeMonthRange() {
+  const today = dayjs()
+  return {
+    start: today.subtract(2, 'month').startOf('month').format('YYYY-MM-DD'),
+    end: today.format('YYYY-MM-DD'),
   }
 }
 
@@ -118,17 +126,28 @@ function ChartCard({ title, children, sx }: { title: string; children: React.Rea
 // ── Dashboard ──────────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const { user, refreshUser } = useAuth()
-  const { startDate, endDate } = getThreeMonthRange()
-  const { transactions, loading, error, refetch } = useTransactions({ startDate, endDate })
+  const defaults = getDefaultRange()
+  const [dashStart, setDashStart] = useState(defaults.start)
+  const [dashEnd, setDashEnd] = useState(defaults.end)
+  const { transactions, loading, error, refetch } = useTransactions({ startDate: dashStart, endDate: dashEnd })
+  const [threeMonthRange] = useState(getThreeMonthRange)
+  const { transactions: historicalTransactions } = useTransactions({ startDate: threeMonthRange.start, endDate: threeMonthRange.end })
   const { categories } = useCategories()
   const { mappings } = usePlaidMappings()
   const [snack, setSnack] = useState<string | null>(null)
   const [linkToken, setLinkToken] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
+  const [unlinking, setUnlinking] = useState(false)
 
-  const today = dayjs()
-  const [outlierStart, setOutlierStart] = useState(today.startOf('month').format('YYYY-MM-DD'))
-  const [outlierEnd, setOutlierEnd] = useState(today.format('YYYY-MM-DD'))
+  const [outlierStart, setOutlierStart] = useState(defaults.start)
+  const [outlierEnd, setOutlierEnd] = useState(defaults.end)
+
+  const handleDashRangeChange = (start: string, end: string) => {
+    setDashStart(start)
+    setDashEnd(end)
+    setOutlierStart(start)
+    setOutlierEnd(end)
+  }
 
   useEffect(() => {
     if (!user || user.plaid_item_id) return
@@ -137,26 +156,10 @@ export default function Dashboard() {
     return () => { active = false }
   }, [user])
 
-  const thisMonthTransactions = useMemo(() => {
-    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10)
-    return transactions.filter((t) => t.transaction_date >= monthStart)
-  }, [transactions])
-
-  const totalThisMonth = useMemo(
-    () => thisMonthTransactions.filter((t) => !t.pending).reduce((s, t) => s + t.amount, 0),
-    [thisMonthTransactions],
+  const totalSpend = useMemo(
+    () => transactions.filter((t) => !t.pending).reduce((s, t) => s + t.amount, 0),
+    [transactions],
   )
-
-  const prevMonthTotal = useMemo(() => {
-    const now = new Date()
-    const start = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 10)
-    const end = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().slice(0, 10)
-    return transactions
-      .filter((t) => !t.pending && t.transaction_date >= start && t.transaction_date <= end)
-      .reduce((s, t) => s + t.amount, 0)
-  }, [transactions])
-
-  const monthDelta = prevMonthTotal > 0 ? ((totalThisMonth - prevMonthTotal) / prevMonthTotal) * 100 : null
 
   const outliers = useMemo(() => {
     const ranged = transactions.filter(
@@ -182,13 +185,29 @@ export default function Dashboard() {
     }
   }, [refetch])
 
+  const handleUnlink = useCallback(async () => {
+    setUnlinking(true)
+    try {
+      await unlinkAccount()
+      await refreshUser()
+      setSnack('Bank account unlinked')
+    } catch (err) {
+      setSnack(err instanceof Error ? err.message : 'Failed to unlink account')
+    } finally {
+      setUnlinking(false)
+    }
+  }, [refreshUser])
+
   const { open: openPlaid, ready: plaidReady } = usePlaidLink({
     token: linkToken,
-    onSuccess: async (publicToken) => {
+    onSuccess: async (publicToken, metadata) => {
       try {
-        await linkAccount(publicToken)
+        await linkAccount(publicToken, {
+          institution_id: metadata.institution?.institution_id ?? null,
+          institution_name: metadata.institution?.name ?? null,
+        })
         await refreshUser()
-        setSnack('Bank linked!')
+        setSnack(`Bank linked${metadata.institution?.name ? `: ${metadata.institution.name}` : '!'}`)
         refetch()
       } catch (err) {
         setSnack(err instanceof Error ? err.message : 'Failed to link account')
@@ -214,7 +233,13 @@ export default function Dashboard() {
             {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
           </Typography>
         </Box>
-        <Box sx={{ display: 'flex', gap: 1 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+          <DateRangeSelector
+            startDate={dashStart}
+            endDate={dashEnd}
+            defaultPreset="month"
+            onChange={handleDashRangeChange}
+          />
           {!user?.plaid_item_id ? (
             <Button
               variant="contained"
@@ -247,7 +272,16 @@ export default function Dashboard() {
                 disabled={!plaidReady || !linkToken}
                 sx={{ borderRadius: 2, textTransform: 'none', color: 'text.secondary', fontSize: 13 }}
               >
-                Relink
+                {user?.institution_name ? `Relink ${user.institution_name}` : 'Relink'}
+              </Button>
+              <Button
+                variant="text"
+                startIcon={unlinking ? <CircularProgress size={13} color="inherit" /> : <LinkOffIcon fontSize="small" />}
+                onClick={handleUnlink}
+                disabled={unlinking}
+                sx={{ borderRadius: 2, textTransform: 'none', color: 'error.main', fontSize: 13 }}
+              >
+                Unlink
               </Button>
             </>
           )}
@@ -260,9 +294,9 @@ export default function Dashboard() {
       <Grid container spacing={2} mb={3}>
         <Grid item xs={12} sm={4}>
           <StatCard
-            label="Spent this month"
-            value={`$${totalThisMonth.toFixed(2)}`}
-            sub={monthDelta !== null ? `${monthDelta > 0 ? '+' : ''}${monthDelta.toFixed(1)}% vs last month` : undefined}
+            label="Total spending"
+            value={`$${totalSpend.toFixed(2)}`}
+            sub={`${dashStart} – ${dashEnd}`}
             icon={<TrendingDownIcon fontSize="small" />}
             color="#f04438"
           />
@@ -270,8 +304,8 @@ export default function Dashboard() {
         <Grid item xs={12} sm={4}>
           <StatCard
             label="Transactions"
-            value={String(thisMonthTransactions.length)}
-            sub="this month"
+            value={String(transactions.filter((t) => !t.pending).length)}
+            sub={`${dashStart} – ${dashEnd}`}
             icon={<TrendingUpIcon fontSize="small" />}
             color="#0fc4b5"
           />
@@ -287,34 +321,36 @@ export default function Dashboard() {
         </Grid>
       </Grid>
 
-      {/* Charts */}
+      {/* Charts — date range controlled */}
       <Grid container spacing={2} mb={2}>
         <Grid item xs={12}>
           <ChartCard title="Daily Spending">
-            <SpendingLineChart transactions={thisMonthTransactions} />
+            <SpendingLineChart transactions={transactions} startDate={dashStart} endDate={dashEnd} />
           </ChartCard>
         </Grid>
         <Grid item xs={12} md={7}>
-          <ChartCard title="3-Month Overview">
-            <HistoricalBarChart transactions={transactions} />
-          </ChartCard>
-        </Grid>
-        <Grid item xs={12} md={5}>
           <ChartCard title="Spending by Plaid Category">
-            <CategoryPieChart transactions={thisMonthTransactions} />
+            <CategoryPieChart transactions={transactions} />
           </ChartCard>
         </Grid>
         {(categories.length > 0 || mappings.length > 0) && (
-          <Grid item xs={12} md={6}>
+          <Grid item xs={12} md={5}>
             <ChartCard title="Spending by Custom Category">
               <CustomCategoryPieChart
-                transactions={thisMonthTransactions}
+                transactions={transactions}
                 categories={categories}
                 mappings={mappings}
               />
             </ChartCard>
           </Grid>
         )}
+
+        {/* 3-month overview — always fixed, independent of date range */}
+        <Grid item xs={12}>
+          <ChartCard title="3-Month Overview">
+            <HistoricalBarChart transactions={historicalTransactions} />
+          </ChartCard>
+        </Grid>
       </Grid>
 
       {/* Large charges */}

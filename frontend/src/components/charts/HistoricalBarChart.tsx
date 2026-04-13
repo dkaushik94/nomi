@@ -47,7 +47,7 @@ export default function HistoricalBarChart({ transactions }: Props) {
 
     const totals = new Map(months.map((m) => [m.key, 0]))
     for (const tx of transactions) {
-      if (tx.pending) continue
+      if (tx.pending || tx.amount <= 0) continue
       const k = tx.transaction_date.slice(0, 7)
       if (totals.has(k)) totals.set(k, (totals.get(k) ?? 0) + tx.amount)
     }

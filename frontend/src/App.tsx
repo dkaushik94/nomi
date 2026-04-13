@@ -7,6 +7,7 @@ import Dashboard from '@/pages/Dashboard'
 import Transactions from '@/pages/Transactions'
 import Categories from '@/pages/Categories'
 import Admin from '@/pages/Admin'
+import Profile from '@/pages/Profile'
 import AuthCallback from '@/pages/AuthCallback'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -38,6 +39,7 @@ export default function App() {
         <Route index element={<Dashboard />} />
         <Route path="transactions" element={<Transactions />} />
         <Route path="categories" element={<Categories />} />
+        <Route path="profile" element={<Profile />} />
         <Route
           path="admin"
           element={

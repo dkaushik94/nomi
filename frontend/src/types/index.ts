@@ -4,7 +4,18 @@ export interface User {
   is_admin: boolean
   is_active: boolean
   plaid_item_id: string | null
+  institution_name: string | null
   created_at: string
+}
+
+export interface BankLink {
+  id: number
+  plaid_item_id: string
+  institution_id: string | null
+  institution_name: string | null
+  is_active: boolean
+  linked_at: string
+  unlinked_at: string | null
 }
 
 export interface Category {

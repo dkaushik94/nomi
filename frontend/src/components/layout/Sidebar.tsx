@@ -1,10 +1,14 @@
 import {
+  Avatar,
   Box,
+  Divider,
   Drawer,
+  IconButton,
   List,
   ListItemButton,
   ListItemIcon,
   ListItemText,
+  Switch,
   Tooltip,
   Typography,
   useMediaQuery,
@@ -14,10 +18,15 @@ import DashboardIcon from '@mui/icons-material/Dashboard'
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong'
 import LabelIcon from '@mui/icons-material/Label'
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings'
+import PersonIcon from '@mui/icons-material/Person'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
+import DarkModeIcon from '@mui/icons-material/DarkMode'
+import LightModeIcon from '@mui/icons-material/LightMode'
+import LogoutIcon from '@mui/icons-material/Logout'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
+import { useThemeMode } from '@/context/ThemeContext'
 
 const NAV_ITEMS = [
   { label: 'Dashboard', icon: <DashboardIcon fontSize="small" />, to: '/' },
@@ -31,18 +40,24 @@ interface SidebarProps {
   onToggle: () => void
 }
 
-function NavItems({
-  collapsed,
-  isAdmin,
-  onClose,
-}: {
-  collapsed: boolean
-  isAdmin: boolean
-  onClose?: () => void
-}) {
+const navSx = {
+  borderRadius: 2,
+  mb: 0.5,
+  minHeight: 40,
+  color: 'text.secondary',
+  '&.active': {
+    bgcolor: 'rgba(15,196,181,0.12)',
+    color: 'primary.main',
+    '& .MuiListItemIcon-root': { color: 'primary.main' },
+  },
+  '&:hover': { bgcolor: 'rgba(15,196,181,0.06)', color: 'text.primary' },
+}
+
+function NavItems({ collapsed, isAdmin, onClose }: { collapsed: boolean; isAdmin: boolean; onClose?: () => void }) {
   const items = [
     ...NAV_ITEMS,
     ...(isAdmin ? [{ label: 'Admin', icon: <AdminPanelSettingsIcon fontSize="small" />, to: '/admin' }] : []),
+    { label: 'Profile', icon: <PersonIcon fontSize="small" />, to: '/profile' },
   ]
 
   return (
@@ -54,19 +69,7 @@ function NavItems({
             to={to}
             end={to === '/'}
             onClick={onClose}
-            sx={{
-              borderRadius: 2,
-              mb: 0.5,
-              justifyContent: collapsed ? 'center' : 'flex-start',
-              minHeight: 40,
-              color: 'text.secondary',
-              '&.active': {
-                bgcolor: 'rgba(15,196,181,0.12)',
-                color: 'primary.main',
-                '& .MuiListItemIcon-root': { color: 'primary.main' },
-              },
-              '&:hover': { bgcolor: 'rgba(15,196,181,0.06)', color: 'text.primary' },
-            }}
+            sx={{ ...navSx, justifyContent: collapsed ? 'center' : 'flex-start' }}
           >
             <ListItemIcon sx={{ minWidth: collapsed ? 0 : 34, color: 'inherit', justifyContent: 'center' }}>
               {icon}
@@ -92,15 +95,17 @@ function SidebarContent({
   isAdmin: boolean
   onClose?: () => void
 }) {
+  const { user, logout } = useAuth()
+  const { mode, toggleTheme } = useThemeMode()
+  const isDark = mode === 'dark'
+
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      {/* Logo + toggle */}
+      {/* Logo + collapse toggle */}
       <Box
         sx={{
-          px: collapsed ? 1 : 2.5,
-          py: 2.5,
-          display: 'flex',
-          alignItems: 'center',
+          px: collapsed ? 1 : 2.5, py: 2.5,
+          display: 'flex', alignItems: 'center',
           justifyContent: collapsed ? 'center' : 'space-between',
           gap: 1,
         }}
@@ -126,7 +131,7 @@ function SidebarContent({
                 width: 24, height: 24, borderRadius: 1,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 cursor: 'pointer', color: 'text.secondary',
-                '&:hover': { bgcolor: 'rgba(255,255,255,0.06)', color: 'text.primary' },
+                '&:hover': { bgcolor: 'action.hover', color: 'text.primary' },
               }}
             >
               <ChevronLeftIcon fontSize="small" />
@@ -135,7 +140,6 @@ function SidebarContent({
         )}
       </Box>
 
-      {/* Expand button when collapsed */}
       {collapsed && (
         <Box sx={{ display: 'flex', justifyContent: 'center', mb: 1 }}>
           <Tooltip title="Expand sidebar" placement="right">
@@ -145,7 +149,7 @@ function SidebarContent({
                 width: 28, height: 28, borderRadius: 1,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 cursor: 'pointer', color: 'text.secondary',
-                '&:hover': { bgcolor: 'rgba(255,255,255,0.06)', color: 'text.primary' },
+                '&:hover': { bgcolor: 'action.hover', color: 'text.primary' },
               }}
             >
               <ChevronRightIcon fontSize="small" />
@@ -162,6 +166,90 @@ function SidebarContent({
           </Typography>
         )}
         <NavItems collapsed={collapsed} isAdmin={isAdmin} onClose={onClose} />
+      </Box>
+
+      {/* Bottom: theme toggle + user + logout */}
+      <Box sx={{ px: 1, pb: 1.5 }}>
+        <Divider sx={{ mb: 1.5 }} />
+
+        {/* Theme toggle */}
+        {collapsed ? (
+          <Tooltip title={isDark ? 'Switch to light mode' : 'Switch to dark mode'} placement="right">
+            <Box sx={{ display: 'flex', justifyContent: 'center', mb: 0.5 }}>
+              <IconButton size="small" onClick={toggleTheme} sx={{ color: 'text.secondary', '&:hover': { color: isDark ? 'secondary.main' : 'primary.main' } }}>
+                {isDark ? <LightModeIcon fontSize="small" /> : <DarkModeIcon fontSize="small" />}
+              </IconButton>
+            </Box>
+          </Tooltip>
+        ) : (
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 1, py: 0.5, borderRadius: 2, '&:hover': { bgcolor: 'action.hover' } }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              {isDark
+                ? <DarkModeIcon fontSize="small" sx={{ color: 'text.secondary', fontSize: 16 }} />
+                : <LightModeIcon fontSize="small" sx={{ color: 'secondary.main', fontSize: 16 }} />}
+              <Typography variant="caption" color="text.secondary" fontWeight={500}>
+                {isDark ? 'Dark mode' : 'Light mode'}
+              </Typography>
+            </Box>
+            <Switch
+              checked={isDark}
+              onChange={toggleTheme}
+              size="small"
+              sx={{
+                '& .MuiSwitch-switchBase.Mui-checked': { color: 'primary.main' },
+                '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': { bgcolor: 'primary.main' },
+              }}
+            />
+          </Box>
+        )}
+
+        {/* User row — links to profile */}
+        <Tooltip title={collapsed ? (user?.email ?? '') : ''} placement="right">
+          <ListItemButton
+            component={NavLink}
+            to="/profile"
+            end
+            onClick={onClose}
+            sx={{
+              ...navSx,
+              justifyContent: collapsed ? 'center' : 'flex-start',
+              mb: 0.5, mt: 0.5,
+            }}
+          >
+            <ListItemIcon sx={{ minWidth: collapsed ? 0 : 34, color: 'inherit', justifyContent: 'center' }}>
+              <Avatar sx={{ width: 22, height: 22, bgcolor: 'primary.main', color: 'primary.contrastText', fontSize: 11, fontWeight: 700 }}>
+                {user?.email?.[0]?.toUpperCase()}
+              </Avatar>
+            </ListItemIcon>
+            {!collapsed && (
+              <ListItemText
+                primary={user?.email}
+                primaryTypographyProps={{ fontSize: 12.5, fontWeight: 500, noWrap: true }}
+              />
+            )}
+          </ListItemButton>
+        </Tooltip>
+
+        {/* Logout */}
+        {collapsed ? (
+          <Tooltip title="Sign out" placement="right">
+            <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+              <IconButton size="small" onClick={logout} sx={{ color: 'text.secondary', '&:hover': { color: 'error.main' } }}>
+                <LogoutIcon fontSize="small" />
+              </IconButton>
+            </Box>
+          </Tooltip>
+        ) : (
+          <ListItemButton
+            onClick={logout}
+            sx={{ borderRadius: 2, minHeight: 38, color: 'text.secondary', '&:hover': { bgcolor: 'rgba(240,68,56,0.08)', color: 'error.main' } }}
+          >
+            <ListItemIcon sx={{ minWidth: 34, color: 'inherit' }}>
+              <LogoutIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText primary="Sign out" primaryTypographyProps={{ fontSize: 13.5, fontWeight: 500 }} />
+          </ListItemButton>
+        )}
       </Box>
     </Box>
   )
@@ -182,7 +270,6 @@ export default function Sidebar({ width, collapsed, onToggle }: SidebarProps) {
     transition: 'width 0.2s ease',
   }
 
-  // Mobile: overlay drawer — open when NOT collapsed, close by collapsing
   if (isMobile) {
     return (
       <Drawer
@@ -190,21 +277,13 @@ export default function Sidebar({ width, collapsed, onToggle }: SidebarProps) {
         open={!collapsed}
         onClose={onToggle}
         ModalProps={{ keepMounted: true }}
-        sx={{
-          '& .MuiDrawer-paper': { ...paperSx, width: 240, transition: 'none' },
-        }}
+        sx={{ '& .MuiDrawer-paper': { ...paperSx, width: 240, transition: 'none' } }}
       >
-        <SidebarContent
-          collapsed={false}
-          onToggle={onToggle}
-          isAdmin={!!user?.is_admin}
-          onClose={onToggle}
-        />
+        <SidebarContent collapsed={false} onToggle={onToggle} isAdmin={!!user?.is_admin} onClose={onToggle} />
       </Drawer>
     )
   }
 
-  // Desktop: permanent drawer with collapse
   return (
     <Drawer
       variant="permanent"
@@ -215,11 +294,7 @@ export default function Sidebar({ width, collapsed, onToggle }: SidebarProps) {
         '& .MuiDrawer-paper': paperSx,
       }}
     >
-      <SidebarContent
-        collapsed={collapsed}
-        onToggle={onToggle}
-        isAdmin={!!user?.is_admin}
-      />
+      <SidebarContent collapsed={collapsed} onToggle={onToggle} isAdmin={!!user?.is_admin} />
     </Drawer>
   )
 }

@@ -27,7 +27,7 @@ user_limiter = Limiter(key_func=get_user_or_ip)
 # Per-endpoint limits
 LIMITS = {
     "global": "1000/hour",
-    "auth_login": "5/15minutes",
+    "auth_login": "20/hour",
     "transactions": "200/hour",
     "categories": "200/hour",
     "sync_transactions": "10/hour",

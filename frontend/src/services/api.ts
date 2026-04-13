@@ -1,5 +1,5 @@
 import axios from 'axios'
-import type { Category, CategoryCreate, PlaidMapping, SyncResult, Transaction, User, WaitlistEntry } from '@/types'
+import type { BankLink, Category, CategoryCreate, PlaidMapping, SyncResult, Transaction, User, WaitlistEntry } from '@/types'
 
 // window.__env is injected at container start (scripts/generate-env.js) for Railway.
 // import.meta.env.VITE_API_URL is the fallback for local dev (Vite proxy handles /api).
@@ -45,9 +45,25 @@ export const getLinkToken = async (): Promise<string> => {
   return res.data.link_token
 }
 
-export const linkAccount = async (publicToken: string): Promise<User> => {
-  const res = await api.post<User>('/users/link-account', { public_token: publicToken })
+export const linkAccount = async (
+  publicToken: string,
+  institution?: { institution_id: string | null; institution_name: string | null },
+): Promise<User> => {
+  const res = await api.post<User>('/users/link-account', {
+    public_token: publicToken,
+    institution_id: institution?.institution_id ?? null,
+    institution_name: institution?.institution_name ?? null,
+  })
   return res.data
+}
+
+export const getBankLinks = async (): Promise<BankLink[]> => {
+  const res = await api.get<BankLink[]>('/users/bank-links')
+  return res.data
+}
+
+export const unlinkAccount = async (): Promise<void> => {
+  await api.delete('/users/link-account')
 }
 
 export const syncTransactions = async (): Promise<SyncResult> => {

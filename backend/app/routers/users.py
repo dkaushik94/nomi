@@ -11,9 +11,10 @@ from app.config import get_settings
 from app.database import get_db
 from app.middleware.rate_limit import LIMITS
 from app.middleware.rate_limit import user_limiter as limiter
+from app.models.bank_link import BankLink
 from app.models.transaction import Transaction
 from app.models.user import User
-from app.schemas.user import LinkAccountRequest, SyncTransactionsResponse, UserProfile
+from app.schemas.user import BankLinkOut, LinkAccountRequest, SyncTransactionsResponse, UserProfile
 from app.services.auth_service import get_current_user
 from app.services.plaid_service import create_link_token, exchange_public_token, sync_transactions
 
@@ -42,19 +43,111 @@ async def link_account(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> UserProfile:
-    """Exchange Plaid public token and store access token."""
+    """Exchange Plaid public token, create a BankLink record, and update the user."""
     try:
         access_token, item_id = exchange_public_token(body.public_token)
     except plaid.ApiException as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Plaid token"
         ) from e
+
+    now = datetime.now(UTC)
+
+    # Deactivate any existing active bank links for this user
+    existing_links = (
+        (
+            await db.execute(
+                select(BankLink).where(
+                    BankLink.user_id == current_user.id,
+                    BankLink.is_active.is_(True),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for link in existing_links:
+        link.is_active = False
+        link.unlinked_at = now
+
+    # Create the new BankLink record
+    new_link = BankLink(
+        user_id=current_user.id,
+        plaid_item_id=item_id,
+        plaid_access_token=access_token,
+        plaid_cursor=None,
+        institution_id=body.institution_id,
+        institution_name=body.institution_name,
+        is_active=True,
+    )
+    db.add(new_link)
+
+    # Keep User fields in sync for backward compat (and fast profile access)
     current_user.plaid_access_token = access_token
     current_user.plaid_item_id = item_id
-    current_user.plaid_cursor = None  # Reset cursor on new link
+    current_user.plaid_cursor = None
+    current_user.institution_name = body.institution_name
+
     await db.commit()
     await db.refresh(current_user)
     return current_user
+
+
+@router.delete("/link-account", status_code=status.HTTP_204_NO_CONTENT)
+async def unlink_account(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> None:
+    """Deactivate the current bank link and clear all Plaid credentials."""
+    now = datetime.now(UTC)
+
+    active_links = (
+        (
+            await db.execute(
+                select(BankLink).where(
+                    BankLink.user_id == current_user.id,
+                    BankLink.is_active.is_(True),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for link in active_links:
+        link.is_active = False
+        link.unlinked_at = now
+
+    # Clear denormalised fields on User
+    current_user.plaid_access_token = None
+    current_user.plaid_item_id = None
+    current_user.plaid_cursor = None
+    current_user.institution_name = None
+
+    await db.commit()
+
+
+@router.get("/bank-links", response_model=list[BankLinkOut])
+async def list_bank_links(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[BankLinkOut]:
+    """Return all bank link records for the current user, newest first.
+
+    Includes both active and historical (unlinked) records so the user can
+    see their full linking history.
+    """
+    links = (
+        (
+            await db.execute(
+                select(BankLink)
+                .where(BankLink.user_id == current_user.id)
+                .order_by(BankLink.created_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [BankLinkOut.from_link(lnk) for lnk in links]
 
 
 @router.post("/sync-transactions", response_model=SyncTransactionsResponse)
@@ -133,7 +226,19 @@ async def trigger_sync(
             row.delete_requested_at = datetime.now(UTC)
             removed_count += 1
 
+    # Keep cursor in sync on both User and the active BankLink
     current_user.plaid_cursor = result["next_cursor"]
+    active_link = (
+        await db.execute(
+            select(BankLink).where(
+                BankLink.user_id == current_user.id,
+                BankLink.is_active.is_(True),
+            )
+        )
+    ).scalar_one_or_none()
+    if active_link:
+        active_link.plaid_cursor = result["next_cursor"]
+
     await db.commit()
 
     return SyncTransactionsResponse(
