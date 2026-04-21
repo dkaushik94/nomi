@@ -1,18 +1,24 @@
-import { Box, CircularProgress } from '@mui/material'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { useAuth } from '@/context/AuthContext'
+import { usePlaidModalConstraint } from '@/hooks/usePlaidModalConstraint'
 import Layout from '@/components/layout/Layout'
 import Login from '@/pages/Login'
 import Dashboard from '@/pages/Dashboard'
 import Transactions from '@/pages/Transactions'
-import Categories from '@/pages/Categories'
-import Admin from '@/pages/Admin'
+import Tags from '@/pages/Tags'
+import Insights from '@/pages/Insights'
 import Profile from '@/pages/Profile'
+import Admin from '@/pages/Admin'
 import AuthCallback from '@/pages/AuthCallback'
+import { Spinner } from '@/components/ui/Spinner'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
-  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', pt: 10 }}><CircularProgress /></Box>
+  if (loading) return (
+    <div className="flex items-center justify-center min-h-dvh bg-bg">
+      <Spinner />
+    </div>
+  )
   if (!user) return <Navigate to="/login" replace />
   return <>{children}</>
 }
@@ -24,6 +30,8 @@ function RequireAdmin({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  usePlaidModalConstraint()
+
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
@@ -38,16 +46,10 @@ export default function App() {
       >
         <Route index element={<Dashboard />} />
         <Route path="transactions" element={<Transactions />} />
-        <Route path="categories" element={<Categories />} />
+        <Route path="tags" element={<Tags />} />
+        <Route path="insights" element={<Insights />} />
         <Route path="profile" element={<Profile />} />
-        <Route
-          path="admin"
-          element={
-            <RequireAdmin>
-              <Admin />
-            </RequireAdmin>
-          }
-        />
+        <Route path="admin" element={<RequireAdmin><Admin /></RequireAdmin>} />
       </Route>
     </Routes>
   )

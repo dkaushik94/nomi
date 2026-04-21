@@ -1,0 +1,109 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Design tokens: dark (default) ── */
+:root {
+  --bg: #0F0F0D;
+  --card: #1B1B19;
+  --card-b: #242421;
+  --ink: #EEEEE9;
+  --muted: #78786F;
+  --faint: #3C3C38;
+  --accent: #6B5FD4;
+  --accent-pressed: #5248AA;
+  --accent-soft: #A098E0;
+  --accent-fg: #fff;
+  --red: #C86E6E;
+  --red-bg: #271818;
+  --warn: #C28B40;
+  --warn-bg: #231C0D;
+  --border: rgba(255,255,255,0.07);
+  --border-strong: rgba(255,255,255,0.12);
+  --shadow: 0 2px 12px rgba(0,0,0,0.4);
+  --shadow-lg: 0 8px 40px rgba(0,0,0,0.5);
+  --bottom-nav-h: 64px;
+  --header-h: 52px;
+  --sidebar-w: 240px;
+}
+
+[data-theme="light"] {
+  --bg: #F8F8F5;
+  --card: #EEEEED;
+  --card-b: #E5E5E2;
+  --ink: #1A1A17;
+  --muted: #72726C;
+  --faint: #B2B2AB;
+  --accent: #6B5FD4;
+  --accent-pressed: #5248AA;
+  --accent-soft: #8070CC;
+  --accent-fg: #fff;
+  --red: #B75450;
+  --red-bg: #F5ECEB;
+  --warn: #B07C38;
+  --warn-bg: #F5EDDD;
+  --border: rgba(0,0,0,0.08);
+  --border-strong: rgba(0,0,0,0.14);
+  --shadow: 0 1px 3px rgba(0,0,0,0.06), 0 3px 12px rgba(0,0,0,0.05);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.12);
+}
+
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html, body, #root {
+    height: 100%;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply font-body antialiased bg-bg text-ink;
+    line-height: 1.5;
+  }
+
+  button { -webkit-tap-highlight-color: transparent; }
+
+  ::-webkit-scrollbar { display: none; }
+  * { scrollbar-width: none; }
+}
+
+/* ── Plaid Link iframe: constrain to centered modal ── */
+#plaid-link-iframe-container {
+  background: rgba(0, 0, 0, 0.55) !important;
+  backdrop-filter: blur(4px) !important;
+  -webkit-backdrop-filter: blur(4px) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+#plaid-link-iframe-container iframe {
+  position: relative !important;
+  top: auto !important;
+  left: auto !important;
+  width: min(460px, calc(100vw - 32px)) !important;
+  height: min(720px, calc(100vh - 48px)) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5) !important;
+}
+
+@layer components {
+  /* ── Slide-up animation for sheets ── */
+  @keyframes slide-up {
+    from { transform: translateX(-50%) translateY(100%); }
+    to   { transform: translateX(-50%) translateY(0); }
+  }
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .animate-slide-up  { animation: slide-up 0.25s cubic-bezier(0.4,0,0.2,1) both; }
+  .animate-fade-in   { animation: fade-in 0.2s ease both; }
+  .animate-spin-slow { animation: spin 0.7s linear infinite; }
+}

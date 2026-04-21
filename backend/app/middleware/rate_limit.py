@@ -1,30 +1,29 @@
-"""Rate limiting configuration using slowapi."""
+"""Rate limiting — disabled. Decorators kept in place for easy re-enable."""
 
 from fastapi import Request
-from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 
 def get_user_or_ip(request: Request) -> str:
-    """
-    Rate-limit key: use the Bearer token (unique per user) for authenticated
-    requests, fall back to IP for unauthenticated ones.
-    This prevents all users behind the same IP (or all dev traffic from
-    localhost) from sharing a single bucket.
-    """
     auth: str = request.headers.get("Authorization", "")
     if auth.startswith("Bearer "):
-        return auth[7:]  # raw token is unique per user session
+        return auth[7:]
     return get_remote_address(request)
 
 
-# Global limiter uses IP (pre-auth, DDoS protection)
-limiter = Limiter(key_func=get_remote_address)
+class _NoopLimiter:
+    """Drop-in replacement for slowapi.Limiter that does nothing."""
 
-# User-scoped limiter for authenticated endpoints
-user_limiter = Limiter(key_func=get_user_or_ip)
+    def limit(self, *_args, **_kwargs):
+        def decorator(func):
+            return func
 
-# Per-endpoint limits
+        return decorator
+
+
+limiter = _NoopLimiter()
+user_limiter = _NoopLimiter()
+
 LIMITS = {
     "global": "1000/hour",
     "auth_login": "20/hour",

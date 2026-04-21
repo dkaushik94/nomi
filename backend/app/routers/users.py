@@ -23,8 +23,28 @@ settings = get_settings()
 
 
 @router.get("/profile", response_model=UserProfile)
-async def get_profile(current_user: User = Depends(get_current_user)) -> UserProfile:
-    return current_user
+async def get_profile(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> UserProfile:
+    active_link = (
+        await db.execute(
+            select(BankLink).where(
+                BankLink.user_id == current_user.id,
+                BankLink.is_active.is_(True),
+            )
+        )
+    ).scalar_one_or_none()
+    return UserProfile(
+        id=current_user.id,
+        email=current_user.email,
+        is_admin=current_user.is_admin,
+        is_active=current_user.is_active,
+        plaid_item_id=current_user.plaid_item_id,
+        institution_name=current_user.institution_name,
+        created_at=current_user.created_at,
+        last_synced_at=active_link.last_synced_at if active_link else None,
+    )
 
 
 @router.post("/link-token", response_model=dict)
@@ -236,13 +256,18 @@ async def trigger_sync(
             )
         )
     ).scalar_one_or_none()
+    synced_at = datetime.now(UTC)
     if active_link:
         active_link.plaid_cursor = result["next_cursor"]
+        active_link.last_synced_at = synced_at
 
     await db.commit()
 
     return SyncTransactionsResponse(
-        added=added_count, modified=modified_count, removed=removed_count
+        added=added_count,
+        modified=modified_count,
+        removed=removed_count,
+        last_synced_at=synced_at,
     )
 
 

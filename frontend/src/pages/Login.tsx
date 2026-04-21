@@ -1,159 +1,155 @@
-import { Box, Button, CircularProgress, Divider, Paper, Typography } from '@mui/material'
-import GoogleIcon from '@mui/icons-material/Google'
-import LockOutlinedIcon from '@mui/icons-material/LockOutlined'
-import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined'
-import StorageOutlinedIcon from '@mui/icons-material/StorageOutlined'
-import VisibilityOffOutlinedIcon from '@mui/icons-material/VisibilityOffOutlined'
 import { useState } from 'react'
+import { NomiLogo } from '@/components/ui/NomiLogo'
+import { Sheet } from '@/components/ui/Sheet'
+import { cn } from '@/lib/utils'
 import { signInWithGoogle } from '@/services/supabase'
 
-function PrivacyPoint({ icon, heading, body }: { icon: React.ReactNode; heading: string; body: string }) {
+function Commitment({ icon, title, desc }: { icon: string; title: string; desc: string }) {
   return (
-    <Box sx={{ display: 'flex', gap: 1.5, textAlign: 'left' }}>
-      <Box sx={{ color: 'primary.main', flexShrink: 0, mt: 0.15 }}>{icon}</Box>
-      <Box>
-        <Typography variant="caption" fontWeight={700} color="text.primary" display="block" sx={{ lineHeight: 1.4 }}>
-          {heading}
-        </Typography>
-        <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.5 }}>
-          {body}
-        </Typography>
-      </Box>
-    </Box>
+    <div className="flex items-start gap-3">
+      <div className="w-[30px] h-[30px] rounded-lg flex items-center justify-center text-sm flex-shrink-0" style={{ background: 'rgba(107,95,212,0.12)' }}>
+        {icon}
+      </div>
+      <div>
+        <p className="text-[13px] font-semibold text-ink/80 mb-0.5">{title}</p>
+        <p className="text-[12px] text-muted leading-relaxed">{desc}</p>
+      </div>
+    </div>
   )
 }
 
 export default function Login() {
+  const [agreed, setAgreed] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [privacyOpen, setPrivacyOpen] = useState(false)
 
-  const handleLogin = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      await signInWithGoogle()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed')
+  const handleSignIn = async () => {
+    if (!agreed) return
+    setLoading(true); setError(null)
+    try { await signInWithGoogle() } catch (e) {
+      setError(e instanceof Error ? e.message : 'Sign in failed')
       setLoading(false)
     }
   }
 
   return (
-    <Box
-      sx={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        bgcolor: 'background.default',
-        p: 2,
-        background: 'radial-gradient(ellipse at 50% 0%, rgba(15,196,181,0.08) 0%, #070d14 60%)',
+    <div
+      className="min-h-dvh flex items-center justify-center p-4 relative"
+      style={{
+        background: '#0C0C0A',
+        paddingBottom: 'calc(24px + env(safe-area-inset-bottom, 0px))',
       }}
     >
-      <Paper
-        elevation={0}
-        sx={{
-          p: { xs: 3, sm: 5 },
-          maxWidth: 420,
-          width: '100%',
-          textAlign: 'center',
-          bgcolor: 'background.paper',
-          border: '1px solid',
-          borderColor: 'divider',
-          borderRadius: 3,
-        }}
-      >
+      {/* Ambient gradient */}
+      <div className="fixed inset-0 pointer-events-none" style={{
+        background: 'radial-gradient(ellipse 80% 60% at 50% -10%, rgba(107,95,212,0.18) 0%, transparent 70%), radial-gradient(ellipse 40% 40% at 80% 80%, rgba(107,95,212,0.07) 0%, transparent 60%)',
+      }} />
+
+      <div className="relative w-full max-w-[400px] flex flex-col">
         {/* Logo */}
-        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2.5 }}>
-          <Box
-            component="img"
-            src="/logo.png"
-            alt="Dobby"
-            sx={{ width: 64, height: 64, borderRadius: '16px', objectFit: 'cover' }}
-          />
-        </Box>
+        <div className="flex flex-col items-center gap-4 mb-9">
+          <NomiLogo size={52} />
+          <span className="font-display font-extrabold text-[28px] tracking-tight" style={{ color: '#EEEEE9' }}>nomi</span>
+          <p className="text-[14px] text-center leading-relaxed max-w-[260px]" style={{ color: '#78786F', marginTop: -8 }}>
+            Take control of your money. See exactly where it goes.
+          </p>
+        </div>
 
-        <Typography variant="h5" fontWeight={800} color="primary.main" mb={0.5}>
-          DOBBY
-        </Typography>
-        <Typography variant="body2" color="text.secondary" mb={3}>
-          Take control of your finances with Dobby. Sign in to get started!
-        </Typography>
-
-        {error && (
-          <Typography color="error.main" variant="body2" mb={2}>
-            {error}
-          </Typography>
-        )}
-
-        <Button
-          variant="contained"
-          size="large"
-          startIcon={loading ? <CircularProgress size={18} color="inherit" /> : <GoogleIcon />}
-          onClick={handleLogin}
-          disabled={loading}
-          fullWidth
-          sx={{
-            borderRadius: 2,
-            textTransform: 'none',
-            fontWeight: 600,
-            py: 1.25,
-            bgcolor: 'primary.main',
-            color: 'primary.contrastText',
-            '&:hover': { bgcolor: 'primary.dark' },
-          }}
+        {/* Privacy consent */}
+        <button
+          className="flex items-start gap-3 p-3.5 rounded-xl mb-5 text-left transition-colors"
+          style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+          onClick={() => setAgreed((v) => !v)}
         >
-          Continue with Google
-        </Button>
+          <div
+            className={cn(
+              'w-[18px] h-[18px] rounded flex items-center justify-center flex-shrink-0 mt-0.5 transition-all',
+              agreed ? 'bg-accent' : 'border border-white/20',
+            )}
+            style={{ borderRadius: 5 }}
+          >
+            {agreed && (
+              <svg width="11" height="8" viewBox="0 0 11 8" fill="none">
+                <path d="M1 4l3 3 6-6" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </div>
+          <p className="text-[13px] leading-relaxed flex-1" style={{ color: '#9A9A94' }}>
+            I've read and agree to nomi's{' '}
+            <span
+              className="underline cursor-pointer"
+              style={{ color: '#A098E0', textDecorationColor: 'rgba(160,152,224,0.4)' }}
+              onClick={(e) => { e.stopPropagation(); setPrivacyOpen(true) }}
+            >
+              Privacy Policy
+            </span>
+            . nomi connects to your bank via Plaid and never sells your data.
+          </p>
+        </button>
 
-        {/* Privacy disclaimer */}
-        <Box
-          sx={{
-            mt: 3,
-            p: 2,
-            borderRadius: 2,
-            bgcolor: 'rgba(15,196,181,0.04)',
-            border: '1px solid rgba(15,196,181,0.12)',
-            textAlign: 'left',
-          }}
+        {/* Sign in button */}
+        <button
+          disabled={!agreed || loading}
+          onClick={handleSignIn}
+          className="flex items-center justify-center gap-2.5 w-full py-3.5 rounded-[13px] text-[15px] font-semibold text-white transition-opacity mb-4 disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{ background: '#6B5FD4' }}
         >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 1.5 }}>
-            <LockOutlinedIcon sx={{ fontSize: 13, color: 'primary.main' }} />
-            <Typography variant="caption" fontWeight={700} color="primary.main" sx={{ textTransform: 'uppercase', letterSpacing: 0.8, fontSize: 10 }}>
-              Your privacy, our commitment
-            </Typography>
-          </Box>
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+            <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="rgba(255,255,255,0.9)" />
+            <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="rgba(255,255,255,0.75)" />
+            <path d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="rgba(255,255,255,0.6)" />
+            <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="rgba(255,255,255,0.85)" />
+          </svg>
+          {loading ? 'Signing in…' : 'Continue with Google'}
+        </button>
 
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-            <PrivacyPoint
-              icon={<ShieldOutlinedIcon sx={{ fontSize: 16 }} />}
-              heading="End-to-end encryption"
-              body="All financial data — including your bank transactions and account details — is encrypted at rest and in transit using industry-standard AES-256 and TLS 1.3. Nobody, including us, can read your raw data in plaintext."
-            />
+        {error && <p className="text-[13px] text-red text-center mb-4">{error}</p>}
 
-            <PrivacyPoint
-              icon={<StorageOutlinedIcon sx={{ fontSize: 16 }} />}
-              heading="Row-level security & strict data isolation"
-              body="Your data is protected by row-level security (RLS) enforced at the database layer. Every query is scoped to your unique user ID — it is architecturally impossible for another user's session to access your records, even in the event of an application-layer bug."
-            />
+        <div className="h-px mb-5" style={{ background: 'rgba(255,255,255,0.08)' }} />
 
-            <PrivacyPoint
-              icon={<VisibilityOffOutlinedIcon sx={{ fontSize: 16 }} />}
-              heading="Never sold, never shared, never used for ads"
-              body="Your financial data is never disclosed, rented, or sold to any third party. It is not used to build advertising profiles, infer purchasing intent, or target you with marketing of any kind — now or in the future."
-            />
-          </Box>
+        {/* Commitments */}
+        <div className="flex flex-col gap-3.5">
+          <Commitment icon="🔒" title="End-to-end encrypted" desc="Your transactions are encrypted at rest and in transit using AES-256 and TLS 1.3." />
+          <Commitment icon="🏛️" title="Row-level data isolation" desc="Your data is scoped to your user ID at the database layer — inaccessible to anyone else." />
+          <Commitment icon="🚫" title="Never sold, never used for ads" desc="Your data is not used to build advertising profiles or sold to any third party." />
+        </div>
 
-          <Divider sx={{ my: 1.75, borderColor: 'rgba(15,196,181,0.1)' }} />
+        <p className="text-[11px] text-center mt-5 leading-relaxed" style={{ color: '#4A4A44' }}>
+          nomi connects to your bank via <strong style={{ color: '#6A6A64' }}>Plaid</strong>, a regulated financial data provider.
+          Nomi requests the minimum permissions required and never initiates payments on your behalf.
+        </p>
+      </div>
 
-          <Typography variant="caption" color="text.secondary" sx={{ fontSize: 10.5, lineHeight: 1.6 }}>
-            By signing in you acknowledge that Dobby connects to your bank read-only via{' '}
-            <Typography component="span" variant="caption" sx={{ fontSize: 10.5, fontWeight: 600, color: 'text.primary' }}>Plaid</Typography>
-            {' '}— a regulated financial data provider. Dobby requests the minimum permissions required (transaction history and balances) and does not initiate or approve any payments on your behalf.
-            You may request complete deletion of your data at any time from your account settings.
-          </Typography>
-        </Box>
-      </Paper>
-    </Box>
+      {/* Privacy Policy Sheet */}
+      <Sheet open={privacyOpen} onClose={() => setPrivacyOpen(false)}>
+        <div className="px-5 pb-6">
+          <div className="py-4 border-b border-brd mb-4">
+            <p className="font-display font-extrabold text-[20px] text-ink tracking-tight">Privacy Policy</p>
+            <p className="text-[12px] text-muted mt-0.5">Draft · not yet published</p>
+          </div>
+          {[
+            { title: 'What we collect', body: 'We collect your name and email address when you sign in with Google. Through Plaid, we receive your transaction history, account balances, and institution names. We do not collect your bank credentials.' },
+            { title: 'How we use it', body: 'Your data is used solely to power your personal dashboard — categorisation, insights, and spending summaries. It is never used for advertising, profiling, or any purpose other than providing the service to you.' },
+            { title: 'Storage & security', body: 'Data is stored in a Postgres database with row-level security enforced at the database layer. All data is encrypted at rest (AES-256) and in transit (TLS 1.3).' },
+            { title: 'Third parties', body: 'We use Plaid to connect to your bank and Google for authentication. We do not share your data with any other third parties and do not sell your data.' },
+            { title: 'Your rights', body: 'You may request export or deletion of all your data at any time from account settings. Deletion is complete within 30 days.' },
+            { title: 'Contact', body: 'Questions? Reach us at privacy@nomi.app' },
+          ].map(({ title, body }) => (
+            <div key={title} className="mb-5">
+              <p className="text-[10px] font-bold text-muted uppercase tracking-widest mb-2">{title}</p>
+              <p className="text-[13px] text-muted leading-relaxed">{body}</p>
+            </div>
+          ))}
+          <button
+            onClick={() => setPrivacyOpen(false)}
+            className="w-full py-3.5 rounded-[13px] text-[15px] font-semibold text-white"
+            style={{ background: '#6B5FD4' }}
+          >
+            Done
+          </button>
+        </div>
+      </Sheet>
+    </div>
   )
 }

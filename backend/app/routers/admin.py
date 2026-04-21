@@ -1,5 +1,7 @@
 """Admin router — no access to user financial data."""
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,7 +38,7 @@ async def get_waitlist(
 @limiter.limit(LIMITS["admin"])
 async def approve_user(
     request: Request,
-    user_id: int,
+    user_id: UUID,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> dict:
@@ -59,7 +61,7 @@ async def approve_user(
 @limiter.limit(LIMITS["admin"])
 async def purge_user(
     request: Request,
-    user_id: int,
+    user_id: UUID,
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
 ) -> None:

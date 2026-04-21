@@ -24,6 +24,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false)
       return
     }
+    setLoading(true)
     try {
       const profile = await getProfile()
       setUser(profile)
