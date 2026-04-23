@@ -13,8 +13,9 @@ Future scope
 """
 
 from datetime import datetime
+from uuid import UUID
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -24,8 +25,8 @@ class BankLink(Base):
     __tablename__ = "bank_links"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    user_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
+    user_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False
     )
 
     # Plaid identifiers
@@ -56,6 +57,11 @@ class BankLink(Base):
     )
     unlinked_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, comment="Timestamp when the link was deactivated."
+    )
+    last_synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        comment="Timestamp of the most recent successful transaction sync.",
     )
 
     created_at: Mapped[datetime] = mapped_column(

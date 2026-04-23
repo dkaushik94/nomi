@@ -1,22 +1,24 @@
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, EmailStr, field_validator
 
 
 class UserProfile(BaseModel):
-    id: int
+    id: Any  # UUID on PostgreSQL, int on SQLite local dev — frontend uses str(id)
     email: EmailStr
     is_admin: bool
     is_active: bool
     plaid_item_id: str | None
     institution_name: str | None
     created_at: datetime
+    last_synced_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
 
 class WaitlistEntry(BaseModel):
-    id: int
+    id: Any  # UUID on PostgreSQL, int on SQLite
     email: EmailStr
     created_at: datetime
 
@@ -51,6 +53,7 @@ class SyncTransactionsResponse(BaseModel):
     added: int
     modified: int
     removed: int
+    last_synced_at: datetime | None = None
 
 
 class BankLinkOut(BaseModel):
@@ -67,6 +70,7 @@ class BankLinkOut(BaseModel):
     is_active: bool
     linked_at: datetime
     unlinked_at: datetime | None
+    last_synced_at: datetime | None
 
     model_config = {"from_attributes": True}
 
@@ -80,4 +84,5 @@ class BankLinkOut(BaseModel):
             is_active=link.is_active,  # type: ignore[attr-defined]
             linked_at=link.created_at,  # type: ignore[attr-defined]
             unlinked_at=link.unlinked_at,  # type: ignore[attr-defined]
+            last_synced_at=link.last_synced_at,  # type: ignore[attr-defined]
         )

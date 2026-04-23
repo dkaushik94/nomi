@@ -1,11 +1,12 @@
 export interface User {
-  id: number
+  id: string | number  // UUID on PostgreSQL, integer on SQLite local dev
   email: string
   is_admin: boolean
   is_active: boolean
   plaid_item_id: string | null
   institution_name: string | null
   created_at: string
+  last_synced_at: string | null
 }
 
 export interface BankLink {
@@ -16,6 +17,7 @@ export interface BankLink {
   is_active: boolean
   linked_at: string
   unlinked_at: string | null
+  last_synced_at: string | null
 }
 
 export interface Category {
@@ -56,10 +58,11 @@ export interface SyncResult {
   added: number
   modified: number
   removed: number
+  last_synced_at: string | null
 }
 
 export interface WaitlistEntry {
-  id: number
+  id: string | number  // UUID on PostgreSQL, integer on SQLite local dev
   email: string
   created_at: string
 }

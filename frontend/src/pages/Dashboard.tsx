@@ -1,402 +1,486 @@
-import {
-  Alert,
-  Box,
-  Button,
-  Card,
-  CardContent,
-  CircularProgress,
-  Dialog,
-  DialogContent,
-  Divider,
-  Grid,
-  IconButton,
-  Snackbar,
-  Tooltip,
-  Typography,
-} from '@mui/material'
-import AccountBalanceIcon from '@mui/icons-material/AccountBalance'
-import LinkOffIcon from '@mui/icons-material/LinkOff'
-import SyncIcon from '@mui/icons-material/Sync'
-import TrendingUpIcon from '@mui/icons-material/TrendingUp'
-import TrendingDownIcon from '@mui/icons-material/TrendingDown'
-import WarningAmberIcon from '@mui/icons-material/WarningAmber'
-import OpenInFullIcon from '@mui/icons-material/OpenInFull'
-import CloseIcon from '@mui/icons-material/Close'
+import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { RefreshCw, AlertCircle, ChevronRight, Link2, Clock } from 'lucide-react'
 import dayjs from 'dayjs'
-import { useState, useMemo, useEffect, useCallback } from 'react'
 import { usePlaidLink } from 'react-plaid-link'
 
 import { useTransactions } from '@/hooks/useTransactions'
 import { useCategories } from '@/hooks/useCategories'
-import { usePlaidMappings } from '@/hooks/usePlaidMappings'
 import { useAuth } from '@/context/AuthContext'
-import { getLinkToken, linkAccount, syncTransactions, unlinkAccount } from '@/services/api'
-import SpendingLineChart from '@/components/charts/SpendingLineChart'
-import CategoryPieChart from '@/components/charts/CategoryPieChart'
-import CustomCategoryPieChart from '@/components/charts/CustomCategoryPieChart'
-import HistoricalBarChart from '@/components/charts/HistoricalBarChart'
-import DateRangeSelector from '@/components/common/DateRangeSelector'
+import { useTopBarActions } from '@/context/TopBarActionsContext'
+import { useThemeMode } from '@/context/ThemeContext'
+import { getLinkToken, linkAccount, syncTransactions } from '@/services/api'
+import { SparklineInteractive, type SparkPoint } from '@/components/ui/SparklineInteractive'
+import { DateRangeFilter, type DateRange } from '@/components/ui/DateRangeFilter'
+import { HBar } from '@/components/ui/HBar'
+import { Pill } from '@/components/ui/Pill'
+import { Spinner } from '@/components/ui/Spinner'
+import { useToast } from '@/components/ui/useToast'
+import { fmt, initials, avatarHue, relDate } from '@/lib/utils'
+import type { Transaction, Category } from '@/types'
 
-function getDefaultRange() {
-  const today = dayjs()
-  return {
-    start: today.startOf('month').format('YYYY-MM-DD'),
-    end: today.format('YYYY-MM-DD'),
+// ── Color helpers ──────────────────────────────────────────────────────────
+
+const PLAID_COLORS: Record<string, string> = {
+  FOOD_AND_DRINK: '#D4775A', GENERAL_MERCHANDISE: '#3A8880',
+  ENTERTAINMENT: '#C87AA8', TRANSPORTATION: '#7B68E8',
+  TRAVEL: '#8B6BD4', HOME_IMPROVEMENT: '#C98A3A',
+  RENT_AND_UTILITIES: '#C98A3A', MEDICAL: '#5B88C4',
+  PERSONAL_CARE: '#5B88C4', GROCERIES: '#5A9E6A',
+  INCOME: '#5A9E6A', TRANSFER_IN: '#4A9BA8',
+  TRANSFER_OUT: '#B85450', LOAN_PAYMENTS: '#B85450',
+  BANK_FEES: '#888', GOVERNMENT_AND_NON_PROFIT: '#6B5FD4',
+}
+
+function plaidColor(cat: string | null): string {
+  if (!cat) return '#888'
+  const parts = cat.split('_')
+  for (let len = parts.length; len > 0; len--) {
+    const key = parts.slice(0, len).join('_')
+    if (PLAID_COLORS[key]) return PLAID_COLORS[key]
   }
+  return '#888'
 }
 
-function getThreeMonthRange() {
-  const today = dayjs()
-  return {
-    start: today.subtract(2, 'month').startOf('month').format('YYYY-MM-DD'),
-    end: today.format('YYYY-MM-DD'),
-  }
+// ── Aggregation ────────────────────────────────────────────────────────────
+
+// Plaid sign convention (stored raw from API):
+//   amount > 0  →  expense   (money leaves the account)
+//   amount < 0  →  credit / refund / income (money enters the account)
+
+function aggregatePlaid(txns: Transaction[]) {
+  const m: Record<string, number> = {}
+  txns.filter((t) => t.amount > 0).forEach((t) => {
+    const k = t.plaid_category_detailed ?? t.plaid_category ?? ''
+    if (!k) return
+    m[k] = (m[k] ?? 0) + t.amount
+  })
+  return Object.entries(m)
+    .map(([k, amt]) => ({
+      label: k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+      amt,
+      color: plaidColor(k),
+    }))
+    .sort((a, b) => b.amt - a.amt)
+    .slice(0, 8)
 }
 
-// ── Stat card ──────────────────────────────────────────────────────────────────
-function StatCard({ label, value, sub, icon, color }: {
-  label: string; value: string; sub?: string; icon: React.ReactNode; color: string
-}) {
+function aggregateCustom(txns: Transaction[], cats: Category[]) {
+  const m: Record<string, number> = {}
+  txns.filter((t) => t.amount > 0).forEach((t) => {
+    const k = String(t.custom_category_id ?? '')
+    if (!k) return
+    m[k] = (m[k] ?? 0) + t.amount
+  })
+  return Object.entries(m)
+    .map(([k, amt]) => {
+      const cat = cats.find((c) => String(c.id) === k)
+      return { label: cat?.label ?? k, amt, color: cat?.color ?? '#888' }
+    })
+    .sort((a, b) => b.amt - a.amt)
+    .slice(0, 8)
+}
+
+// ── Last-sync helpers ──────────────────────────────────────────────────────
+
+function fmtLastSync(iso: string | null): string {
+  if (!iso) return 'Never'
+  const diff = dayjs().diff(dayjs(iso), 'minute')
+  if (diff < 1)  return 'Just now'
+  if (diff < 60) return `${diff}m ago`
+  const h = dayjs().diff(dayjs(iso), 'hour')
+  if (h < 24)    return `${h}h ago`
+  return dayjs(iso).format('MMM D')
+}
+
+// ── TxnRow ─────────────────────────────────────────────────────────────────
+
+function TxnRow({ tx, cats, onTap }: { tx: Transaction; cats: Category[]; onTap: () => void }) {
+  const cat  = cats.find((c) => c.id === tx.custom_category_id)
+  const hue  = avatarHue(tx.merchant_name ?? tx.name)
+  const name = tx.merchant_name ?? tx.name
   return (
-    <Card sx={{ height: '100%' }}>
-      <CardContent sx={{ p: 2.5 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <Box>
-            <Typography variant="caption" color="text.secondary" sx={{ letterSpacing: 0.5, textTransform: 'uppercase', fontSize: 10 }}>
-              {label}
-            </Typography>
-            <Typography variant="h4" fontWeight={800} sx={{ color, mt: 0.5, lineHeight: 1.1 }}>
-              {value}
-            </Typography>
-            {sub && <Typography variant="caption" color="text.secondary" display="block" mt={0.5}>{sub}</Typography>}
-          </Box>
-          <Box sx={{ width: 40, height: 40, borderRadius: 2, bgcolor: `${color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', color }}>
-            {icon}
-          </Box>
-        </Box>
-      </CardContent>
-    </Card>
-  )
-}
-
-// ── Expandable chart card ──────────────────────────────────────────────────────
-function ChartCard({ title, children, sx }: { title: string; children: React.ReactNode; sx?: object }) {
-  const [maximized, setMaximized] = useState(false)
-
-  return (
-    <>
-      <Card sx={{ p: 2.5, height: '100%', position: 'relative', ...sx }}>
-        <Tooltip title="Expand chart">
-          <IconButton
-            size="small"
-            onClick={() => setMaximized(true)}
-            sx={{
-              position: 'absolute', top: 10, right: 10,
-              color: 'text.secondary', opacity: 0.5,
-              '&:hover': { opacity: 1, color: 'primary.main' },
-            }}
-          >
-            <OpenInFullIcon sx={{ fontSize: 14 }} />
-          </IconButton>
-        </Tooltip>
-        {children}
-      </Card>
-
-      <Dialog
-        open={maximized}
-        onClose={() => setMaximized(false)}
-        maxWidth="lg"
-        fullWidth
-        PaperProps={{ sx: { bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', borderRadius: 3 } }}
+    <button
+      onClick={onTap}
+      className="flex items-center gap-3 w-full px-4 py-3 text-left hover:bg-card transition-colors"
+    >
+      <div
+        className="w-10 h-10 rounded-[11px] flex items-center justify-center flex-shrink-0 text-[12px] font-bold tracking-tight"
+        style={{ background: `oklch(60% 0.06 ${hue} / 0.15)`, color: `oklch(60% 0.12 ${hue})` }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 3, py: 2, borderBottom: '1px solid', borderColor: 'divider' }}>
-          <Typography variant="subtitle1" fontWeight={700}>{title}</Typography>
-          <Tooltip title="Close">
-            <IconButton size="small" onClick={() => setMaximized(false)} sx={{ color: 'text.secondary' }}>
-              <CloseIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
-        </Box>
-        <DialogContent sx={{ p: 3 }}>{children}</DialogContent>
-      </Dialog>
-    </>
+        {initials(name)}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5 mb-1">
+          <p className="text-[14px] font-semibold text-ink truncate">{name}</p>
+          {tx.amount > 0 && !tx.custom_category_id && tx.plaid_category && (
+            <span className="w-1.5 h-1.5 rounded-full bg-warn flex-shrink-0" />
+          )}
+        </div>
+        <div className="flex items-center gap-1.5 overflow-hidden">
+          {tx.plaid_category && (
+            <Pill
+              label={tx.plaid_category.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+              color={plaidColor(tx.plaid_category)}
+              size="sm"
+            />
+          )}
+          {cat ? <Pill label={cat.label} color={cat.color} size="sm" /> : (
+            <span className="text-[10px] text-faint font-medium">+ tag</span>
+          )}
+        </div>
+      </div>
+      <div className="text-right flex-shrink-0">
+        <p className="font-display font-bold text-[14px] text-ink">
+          {tx.amount < 0 ? '+' : ''}{fmt(tx.amount)}
+        </p>
+        <p className="text-[11px] text-faint mt-0.5">{relDate(tx.transaction_date)}</p>
+      </div>
+    </button>
   )
 }
 
-// ── Dashboard ──────────────────────────────────────────────────────────────────
-export default function Dashboard() {
-  const { user, refreshUser } = useAuth()
-  const defaults = getDefaultRange()
-  const [dashStart, setDashStart] = useState(defaults.start)
-  const [dashEnd, setDashEnd] = useState(defaults.end)
-  const { transactions, loading, error, refetch } = useTransactions({ startDate: dashStart, endDate: dashEnd })
-  const [threeMonthRange] = useState(getThreeMonthRange)
-  const { transactions: historicalTransactions } = useTransactions({ startDate: threeMonthRange.start, endDate: threeMonthRange.end })
-  const { categories } = useCategories()
-  const { mappings } = usePlaidMappings()
-  const [snack, setSnack] = useState<string | null>(null)
-  const [linkToken, setLinkToken] = useState<string | null>(null)
-  const [syncing, setSyncing] = useState(false)
-  const [unlinking, setUnlinking] = useState(false)
+// ── Default range: last 30 days ────────────────────────────────────────────
 
-  const [outlierStart, setOutlierStart] = useState(defaults.start)
-  const [outlierEnd, setOutlierEnd] = useState(defaults.end)
-
-  const handleDashRangeChange = (start: string, end: string) => {
-    setDashStart(start)
-    setDashEnd(end)
-    setOutlierStart(start)
-    setOutlierEnd(end)
+function defaultRange(): DateRange {
+  return {
+    start: dayjs().subtract(29, 'day').format('YYYY-MM-DD'),
+    end:   dayjs().format('YYYY-MM-DD'),
   }
+}
 
+// ── Dashboard ──────────────────────────────────────────────────────────────
+
+export default function Dashboard() {
+  const navigate = useNavigate()
+  const { user, refreshUser } = useAuth()
+  const { show, node: toastNode } = useToast()
+  const { setActions } = useTopBarActions()
+  const { mode } = useThemeMode()
+
+  const [range, setRange]             = useState<DateRange>(defaultRange)
+  const [syncing, setSyncing]         = useState(false)
+  const [linkToken, setLinkToken]     = useState<string | null>(null)
+  const [pendingOpen, setPendingOpen] = useState(false)
+  const [lastSync, setLastSync]       = useState<string | null>(() => user?.last_synced_at ?? null)
+  // postLinkSyncing: actively fetching after a fresh bank link
+  // postLinkPending: sync completed but Plaid hasn't pushed data yet
+  const [postLinkSyncing, setPostLinkSyncing] = useState(false)
+  const [postLinkPending, setPostLinkPending] = useState(false)
+
+  const isLinked = !!user?.plaid_item_id
+
+  // Keep lastSync in sync with user profile (e.g. after page refresh)
   useEffect(() => {
-    if (!user || user.plaid_item_id) return
-    let active = true
-    getLinkToken().then((t) => { if (active) setLinkToken(t) }).catch(() => null)
-    return () => { active = false }
-  }, [user])
+    if (user?.last_synced_at) setLastSync(user.last_synced_at)
+  }, [user?.last_synced_at])
+
+  const { transactions, loading, refetch: refetchTransactions } = useTransactions({ startDate: range.start, endDate: range.end })
+  const { categories }            = useCategories()
+
+  // ── Derived stats ──────────────────────────────────────────────────────
 
   const totalSpend = useMemo(
-    () => transactions.filter((t) => !t.pending).reduce((s, t) => s + t.amount, 0),
+    () => transactions.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0),
+    [transactions],
+  )
+  const txnCount = useMemo(
+    () => transactions.filter((t) => t.amount > 0).length,
+    [transactions],
+  )
+  const daysInRange = useMemo(
+    () => Math.max(dayjs(range.end).diff(dayjs(range.start), 'day') + 1, 1),
+    [range],
+  )
+  const avgPerDay = totalSpend / daysInRange
+
+  const untaggedCount = useMemo(
+    () => transactions.filter((t) => !t.custom_category_id && t.amount > 0).length,
     [transactions],
   )
 
-  const outliers = useMemo(() => {
-    const ranged = transactions.filter(
-      (t) => !t.pending && t.amount > 0 && t.transaction_date >= outlierStart && t.transaction_date <= outlierEnd,
-    )
-    if (ranged.length < 3) return ranged.sort((a, b) => b.amount - a.amount)
-    const amounts = ranged.map((t) => t.amount)
-    const mean = amounts.reduce((a, b) => a + b, 0) / amounts.length
-    const std = Math.sqrt(amounts.reduce((s, a) => s + (a - mean) ** 2, 0) / amounts.length)
-    return ranged.filter((t) => t.amount > mean + 2 * std).sort((a, b) => b.amount - a.amount)
-  }, [transactions, outlierStart, outlierEnd])
+  const plaidData  = useMemo(() => aggregatePlaid(transactions),                 [transactions])
+  const customData = useMemo(() => aggregateCustom(transactions, categories),    [transactions, categories])
+  const recent     = useMemo(
+    () => [...transactions].sort((a, b) => b.transaction_date.localeCompare(a.transaction_date)).slice(0, 5),
+    [transactions],
+  )
+
+  // ── Sparkline: daily totals across selected range ──────────────────────
+
+  const sparkData = useMemo((): SparkPoint[] => {
+    const byDay: Record<string, number> = {}
+    transactions.filter((t) => t.amount > 0).forEach((t) => {
+      byDay[t.transaction_date] = (byDay[t.transaction_date] ?? 0) + t.amount
+    })
+    const days = daysInRange
+    return Array.from({ length: days }, (_, i) => {
+      const date = dayjs(range.start).add(i, 'day').format('YYYY-MM-DD')
+      return { date, value: byDay[date] ?? 0 }
+    })
+  }, [transactions, range.start, daysInRange])
+
+  // ── Range label ────────────────────────────────────────────────────────
+
+  const rangeLabel = useMemo(() => {
+    const s = dayjs(range.start)
+    const e = dayjs(range.end)
+    if (s.isSame(e, 'month')) return s.format('MMMM YYYY')
+    if (s.isSame(e, 'year'))  return `${s.format('MMM')} – ${e.format('MMM YYYY')}`
+    return `${s.format('MMM YYYY')} – ${e.format('MMM YYYY')}`
+  }, [range])
+
+  // ── Actions ────────────────────────────────────────────────────────────
 
   const handleSync = useCallback(async () => {
     setSyncing(true)
     try {
-      const result = await syncTransactions()
-      setSnack(`Synced: +${result.added} added, ${result.modified} modified, ${result.removed} removed`)
-      refetch()
-    } catch (err) {
-      setSnack(err instanceof Error ? err.message : 'Sync failed')
+      const r = await syncTransactions()
+      if (r.last_synced_at) setLastSync(r.last_synced_at)
+      await refetchTransactions()
+      show(`Synced — ${r.added} new, ${r.modified} updated`)
+    } catch (e) {
+      show(e instanceof Error ? e.message : 'Sync failed')
     } finally {
       setSyncing(false)
     }
-  }, [refetch])
+  }, [show, refetchTransactions])
 
-  const handleUnlink = useCallback(async () => {
-    setUnlinking(true)
+  // After a fresh bank link, auto-sync with up to 3 attempts (Plaid may need a moment
+  // to push historical data). Surfaces a "pending" banner if still empty after retries.
+  const doInitialSync = useCallback(async () => {
+    setPostLinkSyncing(true)
+    setPostLinkPending(false)
     try {
-      await unlinkAccount()
-      await refreshUser()
-      setSnack('Bank account unlinked')
-    } catch (err) {
-      setSnack(err instanceof Error ? err.message : 'Failed to unlink account')
+      for (let attempt = 0; attempt < 3; attempt++) {
+        if (attempt > 0) await new Promise<void>((r) => setTimeout(r, 3500))
+        const r = await syncTransactions()
+        if (r.last_synced_at) setLastSync(r.last_synced_at)
+        if (r.added > 0) {
+          await refetchTransactions()
+          show(`${r.added} transaction${r.added === 1 ? '' : 's'} imported`)
+          return
+        }
+      }
+      // Plaid hasn't delivered data yet — surface a notice to the user
+      setPostLinkPending(true)
+    } catch {
+      // Don't surface sync errors during initial import
     } finally {
-      setUnlinking(false)
+      setPostLinkSyncing(false)
     }
-  }, [refreshUser])
+  }, [show, refetchTransactions])
 
-  const { open: openPlaid, ready: plaidReady } = usePlaidLink({
-    token: linkToken,
-    onSuccess: async (publicToken, metadata) => {
+  // Pre-fetch token on mount so Plaid is ready before the user clicks
+  useEffect(() => {
+    if (!isLinked) getLinkToken().then(setLinkToken).catch(() => {})
+  }, [isLinked])
+
+  const { open: openPlaid, ready } = usePlaidLink({
+    token: linkToken ?? '',
+    onSuccess: async (publicToken, meta) => {
       try {
         await linkAccount(publicToken, {
-          institution_id: metadata.institution?.institution_id ?? null,
-          institution_name: metadata.institution?.name ?? null,
+          institution_id:   meta.institution?.institution_id ?? null,
+          institution_name: meta.institution?.name          ?? null,
         })
         await refreshUser()
-        setSnack(`Bank linked${metadata.institution?.name ? `: ${metadata.institution.name}` : '!'}`)
-        refetch()
-      } catch (err) {
-        setSnack(err instanceof Error ? err.message : 'Failed to link account')
+        // Immediately start fetching transactions in the background
+        doInitialSync()
+      } catch (e) {
+        show(e instanceof Error ? e.message : 'Link failed')
       }
     },
   })
 
-  if (loading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '60vh' }}>
-        <CircularProgress sx={{ color: 'primary.main' }} />
-      </Box>
+  // Fallback: if user clicks before ready, open as soon as Plaid initialises
+  useEffect(() => {
+    if (pendingOpen && ready) {
+      openPlaid()
+      setPendingOpen(false)
+    }
+  }, [pendingOpen, ready, openPlaid])
+
+  // Inject green sync button into TopBar
+  useEffect(() => {
+    if (!isLinked) { setActions(null); return }
+    setActions(
+      <button
+        onClick={handleSync}
+        disabled={syncing}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold text-white transition-opacity disabled:opacity-60"
+        style={{ background: '#22c55e' }}
+      >
+        <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
+        Sync
+      </button>,
     )
+    return () => setActions(null)
+  }, [isLinked, syncing, handleSync, setActions])
+
+  const accentColor = mode === 'light' ? '#22c55e' : 'var(--accent)'
+
+  if (loading) {
+    return <div className="flex items-center justify-center h-64"><Spinner /></div>
   }
 
   return (
-    <Box>
-      {/* Page header */}
-      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 3, flexWrap: 'wrap', gap: 2 }}>
-        <Box>
-          <Typography variant="h5">Spending Dashboard</Typography>
-          <Typography variant="body2" color="text.secondary">
-            {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-          </Typography>
-        </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
-          <DateRangeSelector
-            startDate={dashStart}
-            endDate={dashEnd}
-            defaultPreset="month"
-            onChange={handleDashRangeChange}
-          />
-          {!user?.plaid_item_id ? (
-            <Button
-              variant="contained"
-              startIcon={<AccountBalanceIcon />}
-              onClick={() => openPlaid()}
-              disabled={!plaidReady || !linkToken}
-              sx={{ borderRadius: 2, textTransform: 'none', fontWeight: 600 }}
+    <div className="px-4 md:px-8 py-5 max-w-2xl mx-auto md:max-w-none">
+
+      {/* No bank linked: full-page CTA or post-link importing state */}
+      {!isLinked ? (
+        postLinkSyncing ? (
+          <div className="flex flex-col items-center justify-center py-28 gap-5">
+            <Spinner />
+            <p className="text-[14px] font-semibold text-ink">Importing your transactions…</p>
+            <p className="text-[13px] text-muted">This usually takes a few seconds.</p>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-28 gap-6">
+            <div
+              className="w-16 h-16 rounded-2xl flex items-center justify-center"
+              style={{ background: `${accentColor}1a` }}
             >
-              Link Bank Account
-            </Button>
-          ) : (
-            <>
-              <Button
-                variant="outlined"
-                startIcon={syncing ? <CircularProgress size={15} color="inherit" /> : <SyncIcon fontSize="small" />}
-                onClick={handleSync}
-                disabled={syncing}
-                sx={{
-                  borderRadius: 2, textTransform: 'none', fontWeight: 600,
-                  borderColor: 'primary.main', color: 'primary.main',
-                  '&:hover': { borderColor: 'primary.light', bgcolor: 'rgba(15,196,181,0.06)' },
-                }}
-              >
-                {syncing ? 'Syncing…' : 'Sync'}
-              </Button>
-              <Button
-                variant="text"
-                startIcon={<AccountBalanceIcon fontSize="small" />}
-                onClick={() => openPlaid()}
-                disabled={!plaidReady || !linkToken}
-                sx={{ borderRadius: 2, textTransform: 'none', color: 'text.secondary', fontSize: 13 }}
-              >
-                {user?.institution_name ? `Relink ${user.institution_name}` : 'Relink'}
-              </Button>
-              <Button
-                variant="text"
-                startIcon={unlinking ? <CircularProgress size={13} color="inherit" /> : <LinkOffIcon fontSize="small" />}
-                onClick={handleUnlink}
-                disabled={unlinking}
-                sx={{ borderRadius: 2, textTransform: 'none', color: 'error.main', fontSize: 13 }}
-              >
-                Unlink
-              </Button>
-            </>
-          )}
-        </Box>
-      </Box>
+              <Link2 size={28} style={{ color: accentColor }} />
+            </div>
+            <div className="text-center">
+              <h2 className="font-display font-extrabold text-[24px] text-ink mb-2 tracking-tight">
+                Connect your bank
+              </h2>
+              <p className="text-[14px] text-muted max-w-[320px] leading-relaxed">
+                Link your bank via Plaid to start tracking and understanding your spending.
+              </p>
+            </div>
+            <button
+              className="flex items-center gap-2 px-6 py-3 rounded-xl text-[14px] font-semibold text-white transition-opacity hover:opacity-90 active:opacity-80"
+              style={{ background: accentColor }}
+              onClick={() => ready ? openPlaid() : setPendingOpen(true)}
+            >
+              <Link2 size={16} />
+              Connect bank account
+            </button>
+          </div>
+        )
+      ) : (
+        <>
+          {/* Hero ─────────────────────────────────────────────────────── */}
+          <div className="mb-5">
+            <p className="text-[10px] font-bold text-muted uppercase tracking-[0.12em] mb-2">
+              {rangeLabel} · Spending
+            </p>
+            <h1 className="font-display font-extrabold text-[48px] leading-none tracking-[-1.5px] text-ink mb-3">
+              {fmt(totalSpend)}
+            </h1>
 
-      {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+            {/* Metadata row */}
+            <div className="flex items-center gap-5 mb-4 flex-wrap">
+              <div>
+                <p className="text-[10px] font-bold text-muted uppercase tracking-[0.1em]">Transactions</p>
+                <p className="text-[20px] font-bold text-ink">{txnCount}</p>
+              </div>
+              <div className="w-px h-8 bg-brd" />
+              <div>
+                <p className="text-[10px] font-bold text-muted uppercase tracking-[0.1em]">Avg / Day</p>
+                <p className="text-[20px] font-bold text-ink">{fmt(avgPerDay)}</p>
+              </div>
+              <div className="w-px h-8 bg-brd" />
+              <div>
+                <p className="text-[10px] font-bold text-muted uppercase tracking-[0.1em]">Last Synced</p>
+                <p className="text-[20px] font-bold text-ink">{fmtLastSync(lastSync)}</p>
+              </div>
+            </div>
 
-      {/* Stat cards */}
-      <Grid container spacing={2} mb={3}>
-        <Grid item xs={12} sm={4}>
-          <StatCard
-            label="Total spending"
-            value={`$${totalSpend.toFixed(2)}`}
-            sub={`${dashStart} – ${dashEnd}`}
-            icon={<TrendingDownIcon fontSize="small" />}
-            color="#f04438"
-          />
-        </Grid>
-        <Grid item xs={12} sm={4}>
-          <StatCard
-            label="Transactions"
-            value={String(transactions.filter((t) => !t.pending).length)}
-            sub={`${dashStart} – ${dashEnd}`}
-            icon={<TrendingUpIcon fontSize="small" />}
-            color="#0fc4b5"
-          />
-        </Grid>
-        <Grid item xs={12} sm={4}>
-          <StatCard
-            label="Outlier charges"
-            value={String(outliers.length)}
-            sub="above 2σ threshold"
-            icon={<WarningAmberIcon fontSize="small" />}
-            color="#c9a227"
-          />
-        </Grid>
-      </Grid>
-
-      {/* Charts — date range controlled */}
-      <Grid container spacing={2} mb={2}>
-        <Grid item xs={12}>
-          <ChartCard title="Daily Spending">
-            <SpendingLineChart transactions={transactions} startDate={dashStart} endDate={dashEnd} />
-          </ChartCard>
-        </Grid>
-        <Grid item xs={12} md={7}>
-          <ChartCard title="Spending by Plaid Category">
-            <CategoryPieChart transactions={transactions} />
-          </ChartCard>
-        </Grid>
-        {(categories.length > 0 || mappings.length > 0) && (
-          <Grid item xs={12} md={5}>
-            <ChartCard title="Spending by Custom Category">
-              <CustomCategoryPieChart
-                transactions={transactions}
-                categories={categories}
-                mappings={mappings}
-              />
-            </ChartCard>
-          </Grid>
-        )}
-
-        {/* 3-month overview — always fixed, independent of date range */}
-        <Grid item xs={12}>
-          <ChartCard title="3-Month Overview">
-            <HistoricalBarChart transactions={historicalTransactions} />
-          </ChartCard>
-        </Grid>
-      </Grid>
-
-      {/* Large charges */}
-      <Card>
-        <CardContent sx={{ p: 2.5 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap', gap: 1.5 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <WarningAmberIcon fontSize="small" sx={{ color: 'secondary.main' }} />
-              <Typography variant="subtitle1" fontWeight={600} color="secondary.main">Large charges</Typography>
-              <Typography variant="body2" color="text.secondary">· above 2σ threshold</Typography>
-            </Box>
-            <DateRangeSelector
-              startDate={outlierStart}
-              endDate={outlierEnd}
-              onChange={(s, e) => { setOutlierStart(s); setOutlierEnd(e) }}
+            {/* Interactive sparkline – driven by selected range, daily totals */}
+            <SparklineInteractive
+              data={sparkData}
+              color="var(--accent)"
+              height={72}
             />
-          </Box>
+          </div>
 
-          <Divider sx={{ mb: 1.5 }} />
+          {/* Date range filter */}
+          <DateRangeFilter value={range} onChange={setRange} className="mb-5" />
 
-          {outliers.length === 0 ? (
-            <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
-              No large charges in this period.
-            </Typography>
-          ) : (
-            outliers.map((tx) => (
-              <Box
-                key={tx.id}
-                sx={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  py: 1.25, px: 1, borderRadius: 1.5,
-                  '&:hover': { bgcolor: 'rgba(255,255,255,0.03)' },
-                }}
-              >
-                <Box>
-                  <Typography variant="body2" fontWeight={500}>{tx.merchant_name ?? tx.name}</Typography>
-                  <Typography variant="caption" color="text.secondary">{tx.transaction_date}</Typography>
-                </Box>
-                <Typography variant="body2" fontWeight={700} color="error.main">${tx.amount.toFixed(2)}</Typography>
-              </Box>
-            ))
+          {/* Post-link pending: Plaid hasn't delivered data yet */}
+          {postLinkPending && (
+            <div
+              className="w-full flex items-center gap-3 p-3.5 rounded-xl mb-4"
+              style={{ background: 'var(--card)', border: '1px solid var(--border)' }}
+            >
+              <Clock size={16} className="text-muted flex-shrink-0" />
+              <p className="text-[13px] text-muted flex-1">
+                Your transaction history is being imported — it'll appear here shortly.
+              </p>
+            </div>
           )}
-        </CardContent>
-      </Card>
 
-      <Snackbar open={!!snack} autoHideDuration={5000} onClose={() => setSnack(null)} message={snack} />
-    </Box>
+          {/* Untagged alert */}
+          {untaggedCount > 0 && (
+            <button
+              onClick={() => navigate('/transactions')}
+              className="w-full flex items-center gap-3 p-3.5 rounded-xl mb-4 text-left"
+              style={{ background: 'var(--warn-bg)', border: '1px solid var(--warn)33' }}
+            >
+              <AlertCircle size={18} className="text-warn flex-shrink-0" />
+              <p className="text-[13px] font-semibold text-warn flex-1">
+                {untaggedCount} transaction{untaggedCount > 1 ? 's' : ''} need{untaggedCount === 1 ? 's' : ''} a tag
+              </p>
+              <ChevronRight size={16} className="text-warn/60" />
+            </button>
+          )}
+
+          {/* Charts grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            {plaidData.length > 0 ? (
+              <div className="bg-card rounded-xl p-4 border border-brd">
+                <p className="text-[10px] font-bold text-muted uppercase tracking-[0.12em] mb-4">By Bank Category</p>
+                <HBar data={plaidData} />
+              </div>
+            ) : (
+              <div className="bg-card rounded-xl p-4 border border-brd flex items-center justify-center min-h-[120px]">
+                <p className="text-[13px] text-muted text-center">No expense data yet</p>
+              </div>
+            )}
+            {customData.length > 0 ? (
+              <div className="bg-card rounded-xl p-4 border border-brd">
+                <p className="text-[10px] font-bold text-muted uppercase tracking-[0.12em] mb-4">By Your Tags</p>
+                <HBar data={customData} />
+              </div>
+            ) : (
+              <div className="bg-card rounded-xl p-4 border border-brd flex flex-col items-center justify-center gap-2 min-h-[120px]">
+                <p className="text-[13px] text-muted text-center">Tag transactions to see your custom breakdown</p>
+                <button onClick={() => navigate('/transactions')} className="text-[13px] font-semibold text-accent">
+                  Start tagging →
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Recent */}
+          {recent.length > 0 && (
+            <div className="bg-card rounded-xl border border-brd overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-brd">
+                <p className="text-[10px] font-bold text-muted uppercase tracking-[0.12em]">Recent</p>
+                <button onClick={() => navigate('/transactions')} className="text-[12px] font-semibold text-accent">
+                  See all
+                </button>
+              </div>
+              {recent.map((tx) => (
+                <TxnRow key={tx.id} tx={tx} cats={categories} onTap={() => navigate('/transactions')} />
+              ))}
+            </div>
+          )}
+
+          {transactions.length === 0 && isLinked && (
+            <div className="text-center py-16">
+              <p className="text-[15px] text-muted mb-2">No transactions in this period</p>
+              <button onClick={handleSync} className="text-[14px] font-semibold text-accent">Sync now</button>
+            </div>
+          )}
+        </>
+      )}
+
+      {toastNode}
+    </div>
   )
 }

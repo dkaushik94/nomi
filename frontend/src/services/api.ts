@@ -154,10 +154,10 @@ export const getWaitlist = async (): Promise<WaitlistEntry[]> => {
   return res.data
 }
 
-export const approveUser = async (userId: number): Promise<void> => {
+export const approveUser = async (userId: string | number): Promise<void> => {
   await api.post(`/admin/approve/${userId}`)
 }
 
-export const purgeUser = async (userId: number): Promise<void> => {
+export const purgeUser = async (userId: string | number): Promise<void> => {
   await api.delete(`/admin/purge/${userId}`)
 }

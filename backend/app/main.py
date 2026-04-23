@@ -1,27 +1,32 @@
 """Dobby FastAPI application entry point."""
 
+import logging
+import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
 
 from app.config import get_settings
-from app.database import create_tables
-from app.middleware.rate_limit import limiter
-from app.models import bank_link, plaid_mapping  # noqa: F401 — imported for table creation
 from app.routers import admin, auth, categories, plaid_mappings, transactions, users
+
+logger = logging.getLogger("dobby.access")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    await create_tables()
     yield
 
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s  %(levelname)-8s  %(message)s",
+    datefmt="%H:%M:%S",
+)
+logging.getLogger("sqlalchemy").setLevel(logging.WARNING)
+logging.getLogger("alembic").setLevel(logging.WARNING)
 
 app = FastAPI(
     title="Dobby API",
@@ -32,10 +37,15 @@ app = FastAPI(
     openapi_url="/openapi.json",
 )
 
-# Rate limiting
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-app.add_middleware(SlowAPIMiddleware)
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):  # type: ignore[no-untyped-def]
+    start = time.perf_counter()
+    response = await call_next(request)
+    ms = (time.perf_counter() - start) * 1000
+    logger.info("%s %s → %d  (%.0fms)", request.method, request.url.path, response.status_code, ms)
+    return response
+
 
 # CORS — origins controlled via ALLOWED_ORIGINS env var
 settings = get_settings()
